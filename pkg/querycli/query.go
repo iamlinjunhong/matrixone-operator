@@ -51,6 +51,29 @@ func New() (*Client, error) {
 	return &Client{c: queryCli, status: statusCli}, nil
 }
 
+// Close releases both query-service clients. They are separate because the
+// normal response pool and the Python status response have different wire
+// message types. Callers that own a Client must close it when their runtime
+// stops; morpc futures and backend goroutines otherwise outlive the
+// controller that created them.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+	var firstErr error
+	if c.status != nil {
+		if err := c.status.Close(); err != nil {
+			firstErr = err
+		}
+	}
+	if c.c != nil {
+		if err := c.c.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (c *Client) ShowProcessList(ctx context.Context, address string) (*pb.ShowProcessListResponse, error) {
 	resp, err := c.SendReq(ctx, address, &pb.Request{
 		CmdMethod: pb.CmdMethod_ShowProcessList,
@@ -107,9 +130,13 @@ func (c *Client) SendReq(ctx context.Context, address string, req *pb.Request) (
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "error send request", 0)
 	}
+	defer f.Close()
 	msg, err := f.Get()
 	if err != nil {
 		return nil, errors.WrapPrefix(err, "error get msg", 0)
+	}
+	if msg == nil {
+		return nil, errors.New("query service returned an empty response")
 	}
 	resp, ok := msg.(*pb.Response)
 	if !ok {

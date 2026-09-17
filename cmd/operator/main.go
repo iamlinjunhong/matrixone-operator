@@ -245,6 +245,11 @@ func main() {
 
 	qc, err := querycli.New()
 	exitIf(err, "unable to create query client")
+	defer func() {
+		if err := qc.Close(); err != nil {
+			setupLog.Error(err, "error closing query client")
+		}
+	}()
 	haCliMgr := mocli.NewManager(mgr.GetClient(), zapLogger.Named("mocli-manager"))
 	if features.DefaultFeatureGate.Enabled(features.CNLabel) {
 		cnLabelController := cnstore.NewController(haCliMgr, qc)

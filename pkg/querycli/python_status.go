@@ -207,9 +207,14 @@ func (c *Client) GetPythonUdfStatus(ctx context.Context, address string) (*Pytho
 		err = errors.WrapPrefix(sendErr, "error send Python UDF status request", 0)
 		return nil, err
 	}
+	defer future.Close()
 	message, getErr := future.Get()
 	if getErr != nil {
 		err = errors.WrapPrefix(getErr, "error get Python UDF status response", 0)
+		return nil, err
+	}
+	if message == nil {
+		err = errors.New("CN returned an empty Python UDF status response")
 		return nil, err
 	}
 	response, ok := message.(*pythonUDFStatusResponse)
