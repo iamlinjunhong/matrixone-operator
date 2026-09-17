@@ -176,6 +176,19 @@ func (m *pythonUDFStatusResponse) Unmarshal(data []byte) error {
 	return proto.Unmarshal(data, (*pythonUDFStatusResponseWire)(m))
 }
 
+func validatePythonUDFStatusResponse(requestID uint64, response *pythonUDFStatusResponse) error {
+	if response == nil {
+		return errors.New("CN returned an empty Python UDF status response")
+	}
+	if response.RequestID != requestID {
+		return errors.Errorf("Python UDF status response request ID %d does not match request %d", response.RequestID, requestID)
+	}
+	if response.CmdMethod != pythonUDFStatusCmd {
+		return errors.Errorf("Python UDF status response command %d does not match command %d", response.CmdMethod, pythonUDFStatusCmd)
+	}
+	return nil
+}
+
 func (c *Client) GetPythonUdfStatus(ctx context.Context, address string) (*PythonUDFStatus, error) {
 	if c == nil || c.status == nil {
 		return nil, errors.New("python UDF status client is not initialized")
@@ -199,10 +212,11 @@ func (c *Client) GetPythonUdfStatus(ctx context.Context, address string) (*Pytho
 		metric.CnRPCDuration.WithLabelValues("GetPythonUdfStatus", address, result).Observe(time.Since(start).Seconds())
 	}()
 
-	future, sendErr := c.status.Send(queryCtx, address, &pythonUDFStatusRequest{
+	request := &pythonUDFStatusRequest{
 		CmdMethod:                 pythonUDFStatusCmd,
 		GetPythonUdfStatusRequest: &pythonUDFStatusRequestBody{},
-	})
+	}
+	future, sendErr := c.status.Send(queryCtx, address, request)
 	if sendErr != nil {
 		err = errors.WrapPrefix(sendErr, "error send Python UDF status request", 0)
 		return nil, err
@@ -220,6 +234,9 @@ func (c *Client) GetPythonUdfStatus(ctx context.Context, address string) (*Pytho
 	response, ok := message.(*pythonUDFStatusResponse)
 	if !ok {
 		err = errors.Errorf("message is not a Python UDF status response: %s", message.DebugString())
+		return nil, err
+	}
+	if err = validatePythonUDFStatusResponse(request.RequestID, response); err != nil {
 		return nil, err
 	}
 	if len(response.Error) != 0 {

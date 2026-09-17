@@ -54,4 +54,16 @@ func TestPythonUDFStatusWireRoundTrip(t *testing.T) {
 		len(decodedResponse.GetPythonUdfStatus.Modes) != 2 {
 		t.Fatalf("response round trip = %#v", decodedResponse)
 	}
+	if err := validatePythonUDFStatusResponse(request.RequestID, &decodedResponse); err != nil {
+		t.Fatalf("valid response rejected: %v", err)
+	}
+	decodedResponse.RequestID++
+	if err := validatePythonUDFStatusResponse(request.RequestID, &decodedResponse); err == nil {
+		t.Fatal("mismatched response request ID was accepted")
+	}
+	decodedResponse.RequestID = request.RequestID
+	decodedResponse.CmdMethod++
+	if err := validatePythonUDFStatusResponse(request.RequestID, &decodedResponse); err == nil {
+		t.Fatal("mismatched response command was accepted")
+	}
 }
