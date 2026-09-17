@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	reconfake "github.com/matrixorigin/controller-runtime/pkg/fake"
 	"github.com/matrixorigin/matrixone-operator/api/core/v1alpha1"
@@ -446,6 +447,7 @@ func TestAggregateUDFWorkerCapabilityRequiresCNUUIDFence(t *testing.T) {
 		Generation: generation,
 		Ready:      true,
 		LeaseEpoch: 1,
+		ObservedAt: metav1.Now(),
 	}
 	raw, err := json.Marshal(observation)
 	if err != nil {
@@ -466,6 +468,18 @@ func TestAggregateUDFWorkerCapabilityRequiresCNUUIDFence(t *testing.T) {
 	ready, count, _, _ = aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
 	if ready || count != 0 {
 		t.Fatalf("forged CN identity was accepted: ready=%v count=%d", ready, count)
+	}
+
+	observation.CNUUID = v1alpha1.GetCNPodUUID(&pod)
+	observation.ObservedAt = metav1.NewTime(time.Now().Add(-udfWorkerStatusMaxAge - time.Second))
+	raw, err = json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations[v1alpha1.UDFWorkerStatusAnno] = string(raw)
+	ready, count, reason, _ := aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if ready || count != 0 || reason != v1alpha1.UDFWorkerStatusErrorStale {
+		t.Fatalf("stale capability was accepted: ready=%v count=%d reason=%q", ready, count, reason)
 	}
 }
 

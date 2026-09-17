@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/matrixorigin/matrixone-operator/api/core/v1alpha1"
 	"github.com/matrixorigin/matrixone-operator/pkg/controllers/common"
@@ -25,6 +26,15 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	// CNStore refreshes Python status every 30 seconds. Allowing several
+	// missed refreshes avoids treating a transient controller delay as a
+	// worker replacement while still preventing an abandoned Ready annotation
+	// from keeping a dead route open indefinitely.
+	udfWorkerStatusMaxAge        = 2 * time.Minute
+	udfWorkerStatusMaxFutureSkew = 30 * time.Second
 )
 
 // udfWorkerClientConfig is the single source for the typed Python client
@@ -313,6 +323,7 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 	ready := 0
 	reason := "RuntimeStatusBridgeUnavailable"
 	message := "one or more CN-local Python capability handshakes are missing"
+	now := time.Now()
 	for i := range pods {
 		pod := &pods[i]
 		if pod.Labels[v1alpha1.UDFWorkerEnabledLabel] != v1alpha1.UDFWorkerEnabledValue {
@@ -325,6 +336,19 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 				message = "a CN Pod published malformed Python capability status"
 				continue
 			}
+		}
+		if observation.ObservedAt.Time.IsZero() {
+			if pod.Annotations[v1alpha1.UDFWorkerStatusAnno] != "" {
+				reason = v1alpha1.UDFWorkerStatusErrorStale
+				message = "a CN Pod published Python capability status without an observation time"
+			}
+			continue
+		}
+		if observation.ObservedAt.Time.Before(now.Add(-udfWorkerStatusMaxAge)) ||
+			observation.ObservedAt.Time.After(now.Add(udfWorkerStatusMaxFutureSkew)) {
+			reason = v1alpha1.UDFWorkerStatusErrorStale
+			message = "a CN Pod published Python capability status outside the freshness window"
+			continue
 		}
 		expectedCNUUID := v1alpha1.GetCNPodUUID(pod)
 		if observation.Ready && observation.PodUID == string(pod.UID) &&

@@ -109,10 +109,12 @@ const (
 	UDFWorkerStatusErrorIdentityMismatch  = "IDENTITY_MISMATCH"
 	UDFWorkerStatusErrorPolicyMismatch    = "POLICY_MISMATCH"
 	UDFWorkerStatusErrorInvalid           = "INVALID_STATUS"
+	UDFWorkerStatusErrorStale             = "STALE_STATUS"
 	UDFWorkerStatusReasonQueryUnavailable = "PythonStatusQueryUnavailable"
 	UDFWorkerStatusReasonIdentityMismatch = "PythonStatusIdentityMismatch"
 	UDFWorkerStatusReasonPolicyMismatch   = "PythonStatusPolicyMismatch"
 	UDFWorkerStatusReasonInvalid          = "PythonStatusInvalid"
+	UDFWorkerStatusReasonStale            = "PythonStatusStale"
 )
 
 // UDFWorkerPolicy is the single typed policy used at the CNSet boundary. A
@@ -227,30 +229,33 @@ type UDFWorkerStatus struct {
 // identifiers. PodUID and Generation fence observations from a previous Pod
 // or policy revision.
 type UDFWorkerPodStatus struct {
-	PodUID                     string      `json:"podUID,omitempty"`
-	CNUUID                     string      `json:"cnUUID,omitempty"`
-	Generation                 string      `json:"generation,omitempty"`
-	Ready                      bool        `json:"ready,omitempty"`
-	ErrorClass                 string      `json:"errorClass,omitempty"`
-	Reason                     string      `json:"reason,omitempty"`
-	ProtocolVersion            int32       `json:"protocolVersion,omitempty"`
-	ABIContract                string      `json:"abiContract,omitempty"`
-	AdapterVersion             string      `json:"adapterVersion,omitempty"`
-	SDKVersion                 string      `json:"sdkVersion,omitempty"`
-	DefinitionSchemaVersion    int32       `json:"definitionSchemaVersion,omitempty"`
-	PlanContractVersion        int32       `json:"planContractVersion,omitempty"`
-	TypeDescriptorContract     string      `json:"typeDescriptorContract,omitempty"`
-	TimezoneDatabaseVersion    string      `json:"timezoneDatabaseVersion,omitempty"`
-	WindowBatches              int32       `json:"windowBatches,omitempty"`
-	CumulativeAck              bool        `json:"cumulativeAck,omitempty"`
-	MaxExecutionFrameBytes     int64       `json:"maxExecutionFrameBytes,omitempty"`
-	MaxHandlerProcesses        int32       `json:"maxHandlerProcesses,omitempty"`
-	MaxAccountHandlerProcesses int32       `json:"maxAccountHandlerProcesses,omitempty"`
-	MaxOwnerHandlerProcesses   int32       `json:"maxOwnerHandlerProcesses,omitempty"`
-	LeaseEpoch                 uint64      `json:"leaseEpoch,omitempty"`
-	Modes                      []string    `json:"modes,omitempty"`
-	NullPolicies               []string    `json:"nullPolicies,omitempty"`
-	ObservedAt                 metav1.Time `json:"observedAt,omitempty"`
+	PodUID                     string   `json:"podUID,omitempty"`
+	CNUUID                     string   `json:"cnUUID,omitempty"`
+	Generation                 string   `json:"generation,omitempty"`
+	Ready                      bool     `json:"ready,omitempty"`
+	ErrorClass                 string   `json:"errorClass,omitempty"`
+	Reason                     string   `json:"reason,omitempty"`
+	ProtocolVersion            int32    `json:"protocolVersion,omitempty"`
+	ABIContract                string   `json:"abiContract,omitempty"`
+	AdapterVersion             string   `json:"adapterVersion,omitempty"`
+	SDKVersion                 string   `json:"sdkVersion,omitempty"`
+	DefinitionSchemaVersion    int32    `json:"definitionSchemaVersion,omitempty"`
+	PlanContractVersion        int32    `json:"planContractVersion,omitempty"`
+	TypeDescriptorContract     string   `json:"typeDescriptorContract,omitempty"`
+	TimezoneDatabaseVersion    string   `json:"timezoneDatabaseVersion,omitempty"`
+	WindowBatches              int32    `json:"windowBatches,omitempty"`
+	CumulativeAck              bool     `json:"cumulativeAck,omitempty"`
+	MaxExecutionFrameBytes     int64    `json:"maxExecutionFrameBytes,omitempty"`
+	MaxHandlerProcesses        int32    `json:"maxHandlerProcesses,omitempty"`
+	MaxAccountHandlerProcesses int32    `json:"maxAccountHandlerProcesses,omitempty"`
+	MaxOwnerHandlerProcesses   int32    `json:"maxOwnerHandlerProcesses,omitempty"`
+	LeaseEpoch                 uint64   `json:"leaseEpoch,omitempty"`
+	Modes                      []string `json:"modes,omitempty"`
+	NullPolicies               []string `json:"nullPolicies,omitempty"`
+	// ObservedAt is set by the CN store status bridge. CNSet accepts a Ready
+	// observation only while it is within the controller's bounded freshness
+	// window; it is not a durable liveness claim.
+	ObservedAt metav1.Time `json:"observedAt,omitempty"`
 }
 
 // UDFWorkerPolicyGeneration returns the stable identity of the accepted
