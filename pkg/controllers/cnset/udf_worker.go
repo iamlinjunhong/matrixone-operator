@@ -326,8 +326,10 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 				continue
 			}
 		}
+		expectedCNUUID := v1alpha1.GetCNPodUUID(pod)
 		if observation.Ready && observation.PodUID == string(pod.UID) &&
-			observation.Generation == generation && observation.LeaseEpoch != 0 && observation.ErrorClass == "" {
+			observation.CNUUID == expectedCNUUID && observation.Generation == generation &&
+			observation.LeaseEpoch != 0 && observation.ErrorClass == "" {
 			ready++
 			continue
 		}

@@ -9,6 +9,7 @@
 package cnset
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -424,6 +425,47 @@ func TestUDFWorkerStatusGenerationIncludesWorkerPolicy(t *testing.T) {
 	syncUDFWorkerStatus(cn, cs, false)
 	if cn.Status.UDFWorker.Generation != second {
 		t.Fatalf("identical policy changed generation: got=%q want=%q", cn.Status.UDFWorker.Generation, second)
+	}
+}
+
+func TestAggregateUDFWorkerCapabilityRequiresCNUUIDFence(t *testing.T) {
+	policy := cnSetUDFWorkerPolicyForTest()
+	generation := v1alpha1.UDFWorkerPolicyGeneration(policy)
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cn-0",
+			Namespace: "ns",
+			UID:       "pod-uid",
+			Labels:    map[string]string{v1alpha1.UDFWorkerEnabledLabel: v1alpha1.UDFWorkerEnabledValue},
+		},
+		Spec: corev1.PodSpec{Subdomain: "cn-headless"},
+	}
+	observation := v1alpha1.UDFWorkerPodStatus{
+		PodUID:     string(pod.UID),
+		CNUUID:     v1alpha1.GetCNPodUUID(&pod),
+		Generation: generation,
+		Ready:      true,
+		LeaseEpoch: 1,
+	}
+	raw, err := json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations = map[string]string{v1alpha1.UDFWorkerStatusAnno: string(raw)}
+	ready, count, _, _ := aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if !ready || count != 1 {
+		t.Fatalf("valid capability was rejected: ready=%v count=%d", ready, count)
+	}
+
+	observation.CNUUID = "forged-cn"
+	raw, err = json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations[v1alpha1.UDFWorkerStatusAnno] = string(raw)
+	ready, count, _, _ = aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if ready || count != 0 {
+		t.Fatalf("forged CN identity was accepted: ready=%v count=%d", ready, count)
 	}
 }
 
