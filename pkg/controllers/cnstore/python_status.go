@@ -17,15 +17,24 @@ package cnstore
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/go-errors/errors"
 	recon "github.com/matrixorigin/controller-runtime/pkg/reconciler"
 	"github.com/matrixorigin/matrixone-operator/api/core/v1alpha1"
+	"github.com/matrixorigin/matrixone-operator/pkg/querycli"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const pythonLanguage = "python"
+
+const (
+	maxPythonStatusStringBytes     = 1024
+	maxPythonStatusListItems       = 64
+	maxPythonStatusListItemBytes   = 256
+	maxPythonStatusAnnotationBytes = 64 << 10
+)
 
 func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, address string) v1alpha1.UDFWorkerPodStatus {
 	status := c.unavailablePythonUDFStatus(pod)
@@ -37,6 +46,11 @@ func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, a
 	}
 	observed, err := c.queryCli.GetPythonUdfStatus(ctx, address)
 	if err != nil {
+		return status
+	}
+	if err := validatePythonUDFStatusBounds(observed); err != nil {
+		status.ErrorClass = v1alpha1.UDFWorkerStatusErrorInvalid
+		status.Reason = v1alpha1.UDFWorkerStatusReasonInvalid
 		return status
 	}
 	status.CNUUID = observed.CNUUID
@@ -81,6 +95,41 @@ func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, a
 	return status
 }
 
+func validatePythonUDFStatusBounds(status *querycli.PythonUDFStatus) error {
+	if status == nil {
+		return fmt.Errorf("nil Python UDF status")
+	}
+	for name, value := range map[string]string{
+		"cnUUID":                  status.CNUUID,
+		"language":                status.Language,
+		"errorClass":              status.ErrorClass,
+		"reason":                  status.Reason,
+		"abiContract":             status.ABIContract,
+		"adapterVersion":          status.AdapterVersion,
+		"sdkVersion":              status.SDKVersion,
+		"typeDescriptorContract":  status.TypeDescriptorContract,
+		"timezoneDatabaseVersion": status.TimezoneDatabaseVersion,
+	} {
+		if len(value) > maxPythonStatusStringBytes {
+			return fmt.Errorf("Python UDF status %s exceeds %d bytes", name, maxPythonStatusStringBytes)
+		}
+	}
+	for name, values := range map[string][]string{
+		"modes":        status.Modes,
+		"nullPolicies": status.NullPolicies,
+	} {
+		if len(values) > maxPythonStatusListItems {
+			return fmt.Errorf("Python UDF status %s has too many entries", name)
+		}
+		for _, value := range values {
+			if len(value) > maxPythonStatusListItemBytes {
+				return fmt.Errorf("Python UDF status %s entry exceeds %d bytes", name, maxPythonStatusListItemBytes)
+			}
+		}
+	}
+	return nil
+}
+
 func (c *withCNSet) unavailablePythonUDFStatus(pod *corev1.Pod) v1alpha1.UDFWorkerPodStatus {
 	status := v1alpha1.UDFWorkerPodStatus{
 		PodUID:     string(pod.UID),
@@ -113,6 +162,24 @@ func (c *withCNSet) patchPythonUDFStatus(ctx *recon.Context[*corev1.Pod], status
 	payload, err := json.Marshal(status)
 	if err != nil {
 		return errors.WrapPrefix(err, "marshal Python UDF status", 0)
+	}
+	if len(payload) > maxPythonStatusAnnotationBytes {
+		// Replace the payload instead of leaving an older Ready observation in
+		// place. The fallback contains only the current Pod fence and a stable
+		// failure class, so a future status extension cannot turn annotation
+		// size into a stale-capability bug.
+		status = v1alpha1.UDFWorkerPodStatus{
+			PodUID:     status.PodUID,
+			Generation: status.Generation,
+			Ready:      false,
+			ErrorClass: v1alpha1.UDFWorkerStatusErrorInvalid,
+			Reason:     v1alpha1.UDFWorkerStatusReasonInvalid,
+			ObservedAt: metav1.Now(),
+		}
+		payload, err = json.Marshal(status)
+		if err != nil {
+			return errors.WrapPrefix(err, "marshal bounded Python UDF status", 0)
+		}
 	}
 	return ctx.Patch(ctx.Obj, func() error {
 		if ctx.Obj.Annotations == nil {

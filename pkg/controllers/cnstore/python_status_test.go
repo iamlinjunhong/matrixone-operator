@@ -68,6 +68,16 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 			wantError:  v1alpha1.UDFWorkerStatusErrorPolicyMismatch,
 			wantReason: v1alpha1.UDFWorkerStatusReasonPolicyMismatch,
 		},
+		{
+			name: "oversized capability list is rejected",
+			status: &querycli.PythonUDFStatus{
+				CNUUID: expectedUID, Language: "python", Enabled: true,
+				AllowUnisolated: true, Ready: true, LeaseEpoch: 1,
+				Modes: make([]string, maxPythonStatusListItems+1),
+			},
+			wantError:  v1alpha1.UDFWorkerStatusErrorInvalid,
+			wantReason: v1alpha1.UDFWorkerStatusReasonInvalid,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
