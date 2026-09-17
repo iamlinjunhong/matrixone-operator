@@ -75,6 +75,12 @@ func TestValidateUDFWorkerPolicy(t *testing.T) {
 		{name: "CN port collision is rejected", mutate: func(s *v1alpha1.CNSetSpec) {
 			s.UDFWorker.Worker.Port = v1alpha1.CNUDFWorkerReservedMetricsPort
 		}, want: "UDFWorkerPortConflictsWithCN"},
+		{name: "missing CPU limit is rejected without panic", mutate: func(s *v1alpha1.CNSetSpec) {
+			delete(s.UDFWorker.Worker.Resources.Limits, corev1.ResourceCPU)
+		}, want: "UDFWorkerResourceLimitsRequired"},
+		{name: "missing memory limit is rejected without panic", mutate: func(s *v1alpha1.CNSetSpec) {
+			delete(s.UDFWorker.Worker.Resources.Limits, corev1.ResourceMemory)
+		}, want: "UDFWorkerResourceLimitsRequired"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -120,8 +120,12 @@ func validateUDFWorkerPolicy(spec *v1alpha1.CNSetSpec, path *field.Path) field.E
 		errs = append(errs, field.Required(workerPath.Child("resources", "limits", "memory"),
 			"UDFWorkerResourceLimitsRequired"))
 	}
-	if policy.Worker.Resources.Requests.Cpu().Cmp(*policy.Worker.Resources.Limits.Cpu()) > 0 ||
-		policy.Worker.Resources.Requests.Memory().Cmp(*policy.Worker.Resources.Limits.Memory()) > 0 {
+	cpuLimit := policy.Worker.Resources.Limits.Cpu()
+	memoryLimit := policy.Worker.Resources.Limits.Memory()
+	limitsBelowRequests := cpuLimit != nil && memoryLimit != nil &&
+		(policy.Worker.Resources.Requests.Cpu().Cmp(*cpuLimit) > 0 ||
+			policy.Worker.Resources.Requests.Memory().Cmp(*memoryLimit) > 0)
+	if limitsBelowRequests {
 		errs = append(errs, field.Invalid(workerPath.Child("resources"), policy.Worker.Resources,
 			"UDFWorkerLimitBelowRequest"))
 	}
