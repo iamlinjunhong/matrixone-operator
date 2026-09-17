@@ -72,6 +72,16 @@ func TestUDFWorkerPolicyValidate(t *testing.T) {
 			}
 			p.Worker.Resources.Limits[corev1.ResourceMemory] = q
 		}, want: "UDFWorkerResourceLimitsRequired"},
+		{name: "negative requests rejected", edit: func(p *UDFWorkerPolicy) {
+			p.Worker.Resources.Requests[corev1.ResourceCPU] = *resource.NewQuantity(-1, resource.DecimalSI)
+		}, want: "UDFWorkerRequestsOutOfRange"},
+		{name: "underflowed limit rejected", edit: func(p *UDFWorkerPolicy) {
+			q, err := resource.ParseQuantity("1e-100000")
+			if err != nil {
+				panic(err)
+			}
+			p.Worker.Resources.Limits[corev1.ResourceMemory] = q
+		}, want: "UDFWorkerLimitBelowRequest"},
 		{name: "paired policy cannot carry pool settings", edit: func(p *UDFWorkerPolicy) {
 			p.Pool = &UDFWorkerPoolSpec{Replicas: 1}
 		}, want: "UDFWorkerPoolConfigNotAllowedForPaired"},

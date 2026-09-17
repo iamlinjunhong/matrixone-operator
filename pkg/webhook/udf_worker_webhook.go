@@ -129,6 +129,11 @@ func validateUDFWorkerPolicy(spec *v1alpha1.CNSetSpec, path *field.Path) field.E
 		errs = append(errs, field.Invalid(workerPath.Child("resources"), policy.Worker.Resources,
 			"UDFWorkerLimitBelowRequest"))
 	}
+	if !v1alpha1.IsFiniteNonNegativeQuantity(policy.Worker.Resources.Requests.Cpu()) ||
+		!v1alpha1.IsFiniteNonNegativeQuantity(policy.Worker.Resources.Requests.Memory()) {
+		errs = append(errs, field.Invalid(workerPath.Child("resources", "requests"), policy.Worker.Resources.Requests,
+			"UDFWorkerRequestsOutOfRange"))
+	}
 	if len(policy.Worker.NodeSelector) != 0 || len(policy.Worker.Tolerations) != 0 || policy.Worker.ServiceAccountName != "" {
 		errs = append(errs, field.Forbidden(workerPath,
 			"UnsupportedSamePodWorkerScheduling"))

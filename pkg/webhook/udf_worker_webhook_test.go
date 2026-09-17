@@ -81,6 +81,11 @@ func TestValidateUDFWorkerPolicy(t *testing.T) {
 		{name: "missing memory limit is rejected without panic", mutate: func(s *v1alpha1.CNSetSpec) {
 			delete(s.UDFWorker.Worker.Resources.Limits, corev1.ResourceMemory)
 		}, want: "UDFWorkerResourceLimitsRequired"},
+		{name: "negative request is rejected", mutate: func(s *v1alpha1.CNSetSpec) {
+			s.UDFWorker.Worker.Resources.Requests = corev1.ResourceList{
+				corev1.ResourceCPU: *resource.NewQuantity(-1, resource.DecimalSI),
+			}
+		}, want: "UDFWorkerRequestsOutOfRange"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

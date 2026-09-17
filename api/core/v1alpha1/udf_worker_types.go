@@ -387,6 +387,10 @@ func (p *UDFWorkerPolicy) Validate() error {
 	if !IsFinitePositiveQuantity(p.Worker.Resources.Limits.Cpu()) || !IsFinitePositiveQuantity(p.Worker.Resources.Limits.Memory()) {
 		return fmt.Errorf("UDFWorkerResourceLimitsRequired")
 	}
+	if !IsFiniteNonNegativeQuantity(p.Worker.Resources.Requests.Cpu()) ||
+		!IsFiniteNonNegativeQuantity(p.Worker.Resources.Requests.Memory()) {
+		return fmt.Errorf("UDFWorkerRequestsOutOfRange")
+	}
 	if p.Worker.Resources.Requests.Cpu().Cmp(*p.Worker.Resources.Limits.Cpu()) > 0 ||
 		p.Worker.Resources.Requests.Memory().Cmp(*p.Worker.Resources.Limits.Memory()) > 0 {
 		return fmt.Errorf("UDFWorkerLimitBelowRequest")
@@ -415,7 +419,18 @@ func IsFinitePositiveQuantity(q *resource.Quantity) bool {
 		return false
 	}
 	v := q.AsApproximateFloat64()
-	return !math.IsInf(v, 0) && !math.IsNaN(v)
+	return v > 0 && !math.IsInf(v, 0) && !math.IsNaN(v)
+}
+
+// IsFiniteNonNegativeQuantity accepts an omitted or zero request, but rejects
+// negative, overflowing, NaN-like, and underflowed quantities before they are
+// compared with a limit. The Kubernetes API normally validates these fields;
+// this helper also protects restore and controller paths that bypass admission.
+func IsFiniteNonNegativeQuantity(q *resource.Quantity) bool {
+	if q == nil || q.Sign() == 0 {
+		return true
+	}
+	return IsFinitePositiveQuantity(q)
 }
 
 func validateUDFClientConfig(c *UDFClientConfig) error {
