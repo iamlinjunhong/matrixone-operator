@@ -322,6 +322,9 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 	if policy == nil || !policy.Enabled {
 		return false, 0, "Disabled", "Python UDF worker is disabled"
 	}
+	if desiredWorkers <= 0 {
+		return false, 0, "NoWorkersDesired", "the CNSet does not currently desire a Python UDF worker Pod"
+	}
 	if len(pods) == 0 {
 		return false, 0, "NoWorkerPods", "no CN Pod has reported a Python capability handshake"
 	}
@@ -367,7 +370,7 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 			message = observation.Reason
 		}
 	}
-	if desiredWorkers > 0 && ready == int(desiredWorkers) {
+	if ready == int(desiredWorkers) {
 		return true, int32(ready), "CapabilityHandshakeReady", fmt.Sprintf("%d CN-local Python capability handshakes are ready", ready)
 	}
 	return false, int32(ready), reason, message

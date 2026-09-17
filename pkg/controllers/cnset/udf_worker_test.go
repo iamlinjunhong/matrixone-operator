@@ -486,6 +486,34 @@ func TestAggregateUDFWorkerCapabilityRequiresCNUUIDFence(t *testing.T) {
 	}
 }
 
+func TestAggregateUDFWorkerCapabilityDoesNotReportReadyWorkersWhenScaleToZero(t *testing.T) {
+	policy := cnSetUDFWorkerPolicyForTest()
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "cn-0", UID: "pod-uid",
+			Labels: map[string]string{v1alpha1.UDFWorkerEnabledLabel: v1alpha1.UDFWorkerEnabledValue},
+		},
+		Spec: corev1.PodSpec{Subdomain: "cn-headless"},
+	}
+	observation := v1alpha1.UDFWorkerPodStatus{
+		PodUID:     string(pod.UID),
+		CNUUID:     v1alpha1.GetCNPodUUID(&pod),
+		Generation: v1alpha1.UDFWorkerPolicyGeneration(policy),
+		Ready:      true,
+		LeaseEpoch: 1,
+		ObservedAt: metav1.Now(),
+	}
+	raw, err := json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations = map[string]string{v1alpha1.UDFWorkerStatusAnno: string(raw)}
+	ready, count, reason, _ := aggregateUDFWorkerCapability(policy, observation.Generation, 0, []corev1.Pod{pod})
+	if ready || count != 0 || reason != "NoWorkersDesired" {
+		t.Fatalf("scale-to-zero capability = ready=%v count=%d reason=%q, want false/0/NoWorkersDesired", ready, count, reason)
+	}
+}
+
 func TestUDFWorkerNetworkPolicyDeletionWaitsForOldWorkerPods(t *testing.T) {
 	cn := &v1alpha1.CNSet{
 		TypeMeta: metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "CNSet"},
