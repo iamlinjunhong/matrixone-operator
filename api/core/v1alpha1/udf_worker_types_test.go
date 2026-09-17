@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func validUDFWorkerPolicyForTest() *UDFWorkerPolicy {
@@ -126,6 +127,26 @@ func TestIsCNPodPortReservedForUDFWorker(t *testing.T) {
 		if got := IsCNPodPortReservedForUDFWorker(tc.port); got != tc.reserved {
 			t.Fatalf("IsCNPodPortReservedForUDFWorker(%d) = %v, want %v", tc.port, got, tc.reserved)
 		}
+	}
+}
+
+func TestUDFWorkerPolicyGenerationCanonicalizesEffectiveDefaults(t *testing.T) {
+	base := validUDFWorkerPolicyForTest()
+	base.Worker.Port = 0
+	base.Worker.ImagePullPolicy = ""
+	withDefaults := base.DeepCopy()
+	withDefaults.Worker.Port = ContainerUDFWorkerDefaultPort
+	withDefaults.Worker.ImagePullPolicy = corev1.PullIfNotPresent
+
+	if got, want := UDFWorkerPolicyGeneration(base), UDFWorkerPolicyGeneration(withDefaults); got != want {
+		t.Fatalf("effective-default policies have different generations: %q != %q", got, want)
+	}
+
+	zeroDuration := base.DeepCopy()
+	zeroDuration.Client.RequestTimeout = &metav1.Duration{}
+	zeroDuration.Client.TerminalRecordTTL = &metav1.Duration{}
+	if got, want := UDFWorkerPolicyGeneration(base), UDFWorkerPolicyGeneration(zeroDuration); got != want {
+		t.Fatalf("zero-duration defaults have different generations: %q != %q", got, want)
 	}
 }
 

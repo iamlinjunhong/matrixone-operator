@@ -266,7 +266,20 @@ func UDFWorkerPolicyGeneration(policy *UDFWorkerPolicy) string {
 	if policy == nil || !policy.Enabled {
 		return ""
 	}
-	b, err := json.Marshal(policy)
+	canonical := policy.DeepCopy()
+	if canonical.Worker.Port == 0 {
+		canonical.Worker.Port = ContainerUDFWorkerDefaultPort
+	}
+	if canonical.Worker.ImagePullPolicy == "" {
+		canonical.Worker.ImagePullPolicy = corev1.PullIfNotPresent
+	}
+	if canonical.Client.RequestTimeout != nil && canonical.Client.RequestTimeout.Duration == 0 {
+		canonical.Client.RequestTimeout = nil
+	}
+	if canonical.Client.TerminalRecordTTL != nil && canonical.Client.TerminalRecordTTL.Duration == 0 {
+		canonical.Client.TerminalRecordTTL = nil
+	}
+	b, err := json.Marshal(canonical)
 	if err != nil {
 		return ""
 	}
