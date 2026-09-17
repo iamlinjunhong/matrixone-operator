@@ -728,7 +728,7 @@ func (annotationChangedExcludeStats) Update(e event.UpdateEvent) bool {
 	newAnnos := e.ObjectNew.GetAnnotations()
 	for k, v := range newAnnos {
 		// exclude stats
-		if k == common.DeletionCostAnno || k == v1alpha1.StoreConnectionAnno || k == v1alpha1.StoreScoreAnno {
+		if k == common.DeletionCostAnno || k == v1alpha1.StoreConnectionAnno || k == v1alpha1.StoreScoreAnno || k == v1alpha1.UDFWorkerStatusAnno {
 			continue
 		}
 		// only consider newly added annotations or annotation value change, deletion of annotation key
