@@ -31,7 +31,12 @@ func validateUDFWorkerSources(mo *v1alpha1.MatrixOneCluster, groups []v1alpha1.C
 			return err
 		}
 	}
+	seenNames := make(map[string]struct{}, len(groups))
 	for _, group := range groups {
+		if _, exists := seenNames[group.Name]; exists {
+			return fmt.Errorf("DuplicateCNGroupName: %s", group.Name)
+		}
+		seenNames[group.Name] = struct{}{}
 		if group.UDFWorker != nil {
 			return fmt.Errorf("CNGroupUDFWorkerPolicyMustComeFromMatrixOneCluster: %s", group.Name)
 		}

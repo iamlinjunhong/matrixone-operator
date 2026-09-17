@@ -59,6 +59,17 @@ func TestSyncUDFWorkerClusterStatusAggregatesCNSetState(t *testing.T) {
 	}
 }
 
+func TestValidateUDFWorkerSourcesRejectsDuplicateCNGroupNames(t *testing.T) {
+	mo := &v1alpha1.MatrixOneCluster{}
+	groups := []v1alpha1.CNGroup{
+		{Name: "tp"},
+		{Name: "tp"},
+	}
+	if err := validateUDFWorkerSources(mo, groups); err == nil || !strings.Contains(err.Error(), "DuplicateCNGroupName") {
+		t.Fatalf("duplicate group names were accepted: %v", err)
+	}
+}
+
 func TestSyncUDFWorkerClusterStatusDisabled(t *testing.T) {
 	mo := &v1alpha1.MatrixOneCluster{}
 	syncUDFWorkerClusterStatus(mo, nil, nil, nil)
