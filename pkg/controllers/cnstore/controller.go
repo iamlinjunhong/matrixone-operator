@@ -87,7 +87,11 @@ type withCNSet struct {
 }
 
 func NewController(mgr *mocli.MORPCClientManager, qc *querycli.Client) *Controller {
-	return &Controller{clientMgr: mgr, queryCli: qc}
+	var query queryClient
+	if qc != nil {
+		query = qc
+	}
+	return &Controller{clientMgr: mgr, queryCli: query}
 }
 
 var _ recon.Actor[*corev1.Pod] = &Controller{}

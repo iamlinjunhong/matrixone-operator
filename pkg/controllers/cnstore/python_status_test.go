@@ -125,3 +125,57 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestQueryPythonUDFStatusFailsClosedWhenWiringIsIncomplete(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "cn-0", Namespace: "ns", UID: "pod-uid"},
+		Spec:       corev1.PodSpec{Subdomain: "cn-headless"},
+	}
+	cn := &v1alpha1.CNSet{Spec: v1alpha1.CNSetSpec{
+		ConfigThatChangeCNSpec: v1alpha1.ConfigThatChangeCNSpec{
+			UDFWorker: &v1alpha1.UDFWorkerPolicy{Enabled: true},
+		},
+	}}
+	tests := []struct {
+		name string
+		cn   *v1alpha1.CNSet
+		c    *withCNSet
+		pod  *corev1.Pod
+		want string
+	}{
+		{
+			name: "nil query client",
+			cn:   cn,
+			c:    &withCNSet{Controller: &Controller{}, cn: cn},
+			pod:  pod,
+			want: v1alpha1.UDFWorkerStatusErrorQueryUnavailable,
+		},
+		{
+			name: "nil cn set",
+			c:    &withCNSet{Controller: &Controller{}},
+			pod:  pod,
+			want: "",
+		},
+		{
+			name: "nil pod",
+			cn:   cn,
+			c:    &withCNSet{Controller: &Controller{}, cn: cn},
+			want: v1alpha1.UDFWorkerStatusErrorInvalid,
+		},
+		{
+			name: "nil receiver",
+			cn:   cn,
+			c:    nil,
+			pod:  pod,
+			want: v1alpha1.UDFWorkerStatusErrorQueryUnavailable,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.c.queryPythonUDFStatus(context.Background(), tt.pod, "cn-0:6002")
+			if got.ErrorClass != tt.want {
+				t.Fatalf("error class = %q, want %q; status = %#v", got.ErrorClass, tt.want, got)
+			}
+		})
+	}
+}

@@ -38,7 +38,8 @@ const (
 
 func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, address string) v1alpha1.UDFWorkerPodStatus {
 	status := c.unavailablePythonUDFStatus(pod)
-	if c.cn == nil || !c.cn.Spec.UDFWorker.IsEnabled() {
+	if c == nil || pod == nil || c.cn == nil || !c.cn.Spec.UDFWorker.IsEnabled() ||
+		c.Controller == nil || c.Controller.queryCli == nil {
 		return status
 	}
 	if ctx == nil {
@@ -159,15 +160,23 @@ func isValidConditionReason(value string) bool {
 
 func (c *withCNSet) unavailablePythonUDFStatus(pod *corev1.Pod) v1alpha1.UDFWorkerPodStatus {
 	status := v1alpha1.UDFWorkerPodStatus{
-		PodUID:     string(pod.UID),
-		CNUUID:     v1alpha1.GetCNPodUUID(pod),
 		Ready:      false,
 		ErrorClass: v1alpha1.UDFWorkerStatusErrorQueryUnavailable,
 		Reason:     v1alpha1.UDFWorkerStatusReasonQueryUnavailable,
 		ObservedAt: metav1.Now(),
 	}
-	if c.cn != nil && c.cn.Spec.UDFWorker.IsEnabled() {
+	if pod == nil {
+		status.ErrorClass = v1alpha1.UDFWorkerStatusErrorInvalid
+		status.Reason = v1alpha1.UDFWorkerStatusReasonInvalid
+		return status
+	}
+	status.PodUID = string(pod.UID)
+	status.CNUUID = v1alpha1.GetCNPodUUID(pod)
+	if c != nil && c.cn != nil && c.cn.Spec.UDFWorker.IsEnabled() {
 		status.Generation = pod.Annotations[v1alpha1.UDFWorkerGenerationAnno]
+	}
+	if c == nil {
+		return status
 	}
 	if c.cn == nil || !c.cn.Spec.UDFWorker.IsEnabled() {
 		status.ErrorClass = ""
