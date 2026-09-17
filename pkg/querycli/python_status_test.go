@@ -67,3 +67,13 @@ func TestPythonUDFStatusWireRoundTrip(t *testing.T) {
 		t.Fatal("mismatched response command was accepted")
 	}
 }
+
+func TestPythonUDFStatusRPCMessageBound(t *testing.T) {
+	const maxAnnotationBytes = 64 << 10
+	if maxPythonStatusRPCBytes <= maxAnnotationBytes {
+		t.Fatalf("RPC bound %d must include the bounded annotation payload and protocol envelope", maxPythonStatusRPCBytes)
+	}
+	if maxPythonStatusRPCBytes > 1<<20 {
+		t.Fatalf("RPC bound %d is too large for a control-plane status message", maxPythonStatusRPCBytes)
+	}
+}

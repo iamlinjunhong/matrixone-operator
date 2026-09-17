@@ -31,7 +31,10 @@ import (
 // wire adapter lets old and new components exchange the canonical protobuf
 // fields without inventing a second status protocol. It can be removed when
 // the next MO module release includes the generated binding.
-const pythonUDFStatusCmd int32 = 41
+const (
+	pythonUDFStatusCmd      int32 = 41
+	maxPythonStatusRPCBytes       = 128 << 10
+)
 
 type pythonUDFStatusRequest struct {
 	RequestID                 uint64                      `protobuf:"varint,1,opt,name=RequestID,proto3" json:"RequestID,omitempty"`

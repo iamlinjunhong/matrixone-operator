@@ -23,6 +23,7 @@ import (
 	"github.com/matrixorigin/matrixone/pkg/common/morpc"
 	pb "github.com/matrixorigin/matrixone/pkg/pb/query"
 	"github.com/matrixorigin/matrixone/pkg/txn/rpc"
+	"github.com/matrixorigin/matrixone/pkg/util/toml"
 )
 
 var timeout = 10 * time.Second
@@ -42,7 +43,7 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	statusCli, err := rpc.Config{}.NewClient("", "query-service",
+	statusCli, err := (rpc.Config{MaxMessageSize: toml.ByteSize(maxPythonStatusRPCBytes)}).NewClient("", "query-service",
 		func() morpc.Message { return &pythonUDFStatusResponse{} })
 	if err != nil {
 		_ = queryCli.Close()
