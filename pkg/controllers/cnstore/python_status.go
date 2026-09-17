@@ -64,6 +64,7 @@ func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, a
 
 	expectedUID := v1alpha1.GetCNPodUUID(pod)
 	if observed.CNUUID != expectedUID || observed.Language != pythonLanguage ||
+		!observed.Enabled || !observed.AllowUnisolated ||
 		(observed.Ready && observed.LeaseEpoch == 0) ||
 		(observed.Ready && observed.ErrorClass != "") {
 		status.Ready = false
@@ -72,6 +73,9 @@ func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, a
 		if observed.CNUUID != expectedUID {
 			status.ErrorClass = v1alpha1.UDFWorkerStatusErrorIdentityMismatch
 			status.Reason = v1alpha1.UDFWorkerStatusReasonIdentityMismatch
+		} else if !observed.Enabled || !observed.AllowUnisolated {
+			status.ErrorClass = v1alpha1.UDFWorkerStatusErrorPolicyMismatch
+			status.Reason = v1alpha1.UDFWorkerStatusReasonPolicyMismatch
 		}
 	}
 	return status

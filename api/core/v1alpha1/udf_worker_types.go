@@ -107,9 +107,11 @@ const (
 
 	UDFWorkerStatusErrorQueryUnavailable  = "QUERY_UNAVAILABLE"
 	UDFWorkerStatusErrorIdentityMismatch  = "IDENTITY_MISMATCH"
+	UDFWorkerStatusErrorPolicyMismatch    = "POLICY_MISMATCH"
 	UDFWorkerStatusErrorInvalid           = "INVALID_STATUS"
 	UDFWorkerStatusReasonQueryUnavailable = "PythonStatusQueryUnavailable"
 	UDFWorkerStatusReasonIdentityMismatch = "PythonStatusIdentityMismatch"
+	UDFWorkerStatusReasonPolicyMismatch   = "PythonStatusPolicyMismatch"
 	UDFWorkerStatusReasonInvalid          = "PythonStatusInvalid"
 )
 

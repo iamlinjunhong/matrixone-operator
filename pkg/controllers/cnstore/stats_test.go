@@ -33,6 +33,7 @@ type fakeQueryClient struct {
 	sessionErr    error
 	pipelineErr   error
 	replicaErr    error
+	pythonStatus  *querycli.PythonUDFStatus
 
 	pipelineCalls int
 	replicaCalls  int
@@ -62,7 +63,12 @@ func (f *fakeQueryClient) GetReplicaCount(context.Context, string) (querypb.GetR
 }
 
 func (f *fakeQueryClient) GetPythonUdfStatus(context.Context, string) (*querycli.PythonUDFStatus, error) {
-	return &querycli.PythonUDFStatus{Language: "python", Ready: true, LeaseEpoch: 1}, nil
+	if f.pythonStatus != nil {
+		return f.pythonStatus, nil
+	}
+	return &querycli.PythonUDFStatus{
+		Language: "python", Enabled: true, AllowUnisolated: true, Ready: true, LeaseEpoch: 1,
+	}, nil
 }
 
 func TestCollectQueryStatsFailClosed(t *testing.T) {
