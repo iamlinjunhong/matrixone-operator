@@ -131,6 +131,19 @@ func buildUDFWorkerNetworkPolicy(cn *v1alpha1.CNSet) *networkingv1.NetworkPolicy
 	if cn.Spec.UDFWorker == nil || !cn.Spec.UDFWorker.Enabled {
 		return nil
 	}
+	ports := []networkingv1.NetworkPolicyPort{
+		{Port: func() *intstr.IntOrString { v := intstr.FromInt(CNSQLPort); return &v }()},
+	}
+	// port-base allocates one port for every CN internal service slot. The
+	// policy must preserve the complete CN control/data plane when it is
+	// enabled; allowing only the services used by the Operator would silently
+	// break Gossip or Shard traffic.
+	for offset := int32(0); offset < v1alpha1.CNUDFWorkerReservedPortSlots; offset++ {
+		port := intstr.FromInt(int(v1alpha1.CNUDFWorkerReservedPortBase + offset))
+		ports = append(ports, networkingv1.NetworkPolicyPort{Port: &port})
+	}
+	metricsPort := intstr.FromInt(common.MetricsPort)
+	ports = append(ports, networkingv1.NetworkPolicyPort{Port: &metricsPort})
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      udfWorkerNetworkPolicyName(cn),
@@ -141,13 +154,7 @@ func buildUDFWorkerNetworkPolicy(cn *v1alpha1.CNSet) *networkingv1.NetworkPolicy
 			PodSelector: metav1.LabelSelector{MatchLabels: common.SubResourceLabels(cn)},
 			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
 			Ingress: []networkingv1.NetworkPolicyIngressRule{{
-				Ports: []networkingv1.NetworkPolicyPort{
-					{Port: func() *intstr.IntOrString { v := intstr.FromInt(CNSQLPort); return &v }()},
-					{Port: func() *intstr.IntOrString { v := intstr.FromInt(cnRPCPort); return &v }()},
-					{Port: func() *intstr.IntOrString { v := intstr.FromInt(cnQueryPort); return &v }()},
-					{Port: func() *intstr.IntOrString { v := intstr.FromInt(common.LockServicePort); return &v }()},
-					{Port: func() *intstr.IntOrString { v := intstr.FromInt(common.MetricsPort); return &v }()},
-				},
+				Ports: ports,
 			}},
 		},
 	}

@@ -229,6 +229,12 @@ func TestBuildUDFWorkerNetworkPolicyAllowsCNQueryButOmitsWorkerPort(t *testing.T
 	if !allowed[int(cnQueryPort)] {
 		t.Fatalf("CN query service port %d is missing from ingress allowlist: %#v", cnQueryPort, np.Spec.Ingress[0].Ports)
 	}
+	for offset := int32(0); offset < v1alpha1.CNUDFWorkerReservedPortSlots; offset++ {
+		port := int(v1alpha1.CNUDFWorkerReservedPortBase + offset)
+		if !allowed[port] {
+			t.Fatalf("CN internal service port %d is missing from ingress allowlist: %#v", port, np.Spec.Ingress[0].Ports)
+		}
+	}
 	if np.Spec.PodSelector.MatchLabels[common.ComponentLabelKey] == "" {
 		t.Fatalf("network policy selector is not tied to the CNSet Pod labels: %#v", np.Spec.PodSelector)
 	}
