@@ -23,6 +23,7 @@ import (
 	"github.com/blang/semver/v4"
 	"github.com/go-logr/logr"
 	"github.com/matrixorigin/matrixone-operator/pkg/controllers/common"
+	"github.com/matrixorigin/matrixone-operator/pkg/querycli"
 	querypb "github.com/matrixorigin/matrixone/pkg/pb/query"
 )
 
@@ -58,6 +59,10 @@ func (f *fakeQueryClient) GetReplicaCount(context.Context, string) (querypb.GetR
 		return querypb.GetReplicaCountResponse{}, f.replicaErr
 	}
 	return querypb.GetReplicaCountResponse{Count: f.replicaCount}, nil
+}
+
+func (f *fakeQueryClient) GetPythonUdfStatus(context.Context, string) (*querycli.PythonUDFStatus, error) {
+	return &querycli.PythonUDFStatus{Language: "python", Ready: true, LeaseEpoch: 1}, nil
 }
 
 func TestCollectQueryStatsFailClosed(t *testing.T) {

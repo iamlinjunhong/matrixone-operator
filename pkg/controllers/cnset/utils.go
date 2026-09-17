@@ -25,6 +25,9 @@ const (
 	CNSQLPort  = 6001
 	cnRPCPort  = 6002
 	cnPortBase = 6002
+	// cnQueryPort is the per-CN query service used by the Operator's bounded
+	// Python runtime status bridge. It is separate from the worker Flight port.
+	cnQueryPort = cnPortBase + 2
 )
 
 func getCNServicePort() corev1.ServicePort {
@@ -44,6 +47,10 @@ func svcName(cn *v1alpha1.CNSet) string {
 
 func metricSvcName(cn *v1alpha1.CNSet) string {
 	return resourceName(cn) + "-metric"
+}
+
+func udfWorkerNetworkPolicyName(cn *v1alpha1.CNSet) string {
+	return resourceName(cn) + "-udf-worker"
 }
 
 func setName(cn *v1alpha1.CNSet) string {

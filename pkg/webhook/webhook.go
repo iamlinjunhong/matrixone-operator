@@ -45,5 +45,8 @@ func RegisterWebhooks(mgr ctrl.Manager) error {
 	if err := (matrixOneClusterWebhook{}).setupWebhookWithManager(mgr); err != nil {
 		return err
 	}
+	if err := (cnPoolWebhook{}).setupWebhookWithManager(mgr); err != nil {
+		return err
+	}
 	return nil
 }

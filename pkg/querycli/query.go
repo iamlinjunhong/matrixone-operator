@@ -28,7 +28,8 @@ import (
 var timeout = 10 * time.Second
 
 type Client struct {
-	c morpc.RPCClient
+	c      morpc.RPCClient
+	status morpc.RPCClient
 }
 
 func New() (*Client, error) {
@@ -41,7 +42,13 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{c: queryCli}, nil
+	statusCli, err := rpc.Config{}.NewClient("", "query-service",
+		func() morpc.Message { return &pythonUDFStatusResponse{} })
+	if err != nil {
+		_ = queryCli.Close()
+		return nil, err
+	}
+	return &Client{c: queryCli, status: statusCli}, nil
 }
 
 func (c *Client) ShowProcessList(ctx context.Context, address string) (*pb.ShowProcessListResponse, error) {

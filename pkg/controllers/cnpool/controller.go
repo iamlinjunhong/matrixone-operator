@@ -324,6 +324,19 @@ func iterateDirectLivePods(cli recon.KubeClient, pool *v1alpha1.CNPool, fn func(
 }
 
 func buildCNSet(p *v1alpha1.CNPool) (*v1alpha1.CNSet, error) {
+	if err := p.Spec.Template.ValidateUDFWorkerConfiguration(); err != nil {
+		return nil, errors.WrapPrefix(err, "invalid Python UDF worker policy", 0)
+	}
+	if policy := p.Spec.Template.UDFWorker; policy != nil && policy.Enabled {
+		if err := common.ValidateUDFWorkerPodOverlay(p.Spec.Template.Overlay); err != nil {
+			return nil, errors.WrapPrefix(err, "invalid Python UDF worker overlay", 0)
+		}
+		for key := range p.Spec.PodLabels {
+			if common.IsUDFWorkerControllerOwnedPodLabel(key) {
+				return nil, errors.Errorf("PythonEnabledCNPoolDisallowsControllerOwnedPodLabel: %s", key)
+			}
+		}
+	}
 	csSpec := p.Spec.Template.DeepCopy()
 	syncCNSetSpec(p, csSpec)
 	// generate the controller revision hash
@@ -334,6 +347,12 @@ func buildCNSet(p *v1alpha1.CNPool) (*v1alpha1.CNSet, error) {
 	name := fmt.Sprintf("%s-%s", p.Name, hash)
 
 	labels := ownedLabels(p)
+	// Keep pool ownership in CNSet metadata. The CNSet controller projects the
+	// pool name and initial phase onto Pod labels after applying the user
+	// overlay, so the generated CNSet does not have to carry controller-owned
+	// lifecycle labels inside the user-facing Overlay. This lets the CNSet
+	// admission boundary distinguish user input from pool-controller state.
+	labels[v1alpha1.PoolNameLabel] = p.Name
 	labels[appsv1.ControllerRevisionHashLabelKey] = hash
 	cs := &v1alpha1.CNSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -375,8 +394,6 @@ func syncCNSetSpec(p *v1alpha1.CNPool, csSpec *v1alpha1.CNSetSpec) {
 	for k, v := range p.Spec.PodLabels {
 		csSpec.Overlay.PodLabels[k] = v
 	}
-	csSpec.Overlay.PodLabels[v1alpha1.CNPodPhaseLabel] = v1alpha1.CNPodPhaseUnknown
-	csSpec.Overlay.PodLabels[v1alpha1.PoolNameLabel] = p.Name
 }
 
 func generateRevisionHash(cn *v1alpha1.CNSetSpec) (string, error) {
