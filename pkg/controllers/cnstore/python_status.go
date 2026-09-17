@@ -116,6 +116,9 @@ func validatePythonUDFStatusBounds(status *querycli.PythonUDFStatus) error {
 			return fmt.Errorf("Python UDF status %s exceeds %d bytes", name, maxPythonStatusStringBytes)
 		}
 	}
+	if status.ErrorClass != "" && !isValidConditionReason(status.ErrorClass) {
+		return fmt.Errorf("Python UDF status errorClass is not a valid condition reason")
+	}
 	for name, values := range map[string][]string{
 		"modes":        status.Modes,
 		"nullPolicies": status.NullPolicies,
@@ -130,6 +133,28 @@ func validatePythonUDFStatusBounds(status *querycli.PythonUDFStatus) error {
 		}
 	}
 	return nil
+}
+
+func isValidConditionReason(value string) bool {
+	if value == "" || len(value) > maxPythonStatusStringBytes {
+		return value == ""
+	}
+	isLetter := func(b byte) bool {
+		return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
+	}
+	isAlphaNumeric := func(b byte) bool {
+		return isLetter(b) || b >= '0' && b <= '9'
+	}
+	if !isLetter(value[0]) || !isAlphaNumeric(value[len(value)-1]) && value[len(value)-1] != '_' {
+		return false
+	}
+	for i := 1; i < len(value)-1; i++ {
+		b := value[i]
+		if !isAlphaNumeric(b) && b != '_' && b != ',' && b != ':' {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *withCNSet) unavailablePythonUDFStatus(pod *corev1.Pod) v1alpha1.UDFWorkerPodStatus {
