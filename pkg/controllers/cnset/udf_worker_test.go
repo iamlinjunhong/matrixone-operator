@@ -251,6 +251,9 @@ func TestSyncPodMetaControllerOwnsUDFWorkerMarker(t *testing.T) {
 	if got := cs.Spec.Template.Labels[v1alpha1.UDFWorkerEnabledLabel]; got != v1alpha1.UDFWorkerEnabledValue {
 		t.Fatalf("marker = %q, want %q", got, v1alpha1.UDFWorkerEnabledValue)
 	}
+	if got, want := cs.Spec.Template.Annotations[v1alpha1.UDFWorkerGenerationAnno], v1alpha1.UDFWorkerPolicyGeneration(cn.Spec.UDFWorker); got != want {
+		t.Fatalf("worker generation annotation = %q, want %q", got, want)
+	}
 }
 
 func TestSyncPodMetaProjectsMatrixOneClusterLabelAfterOverlay(t *testing.T) {

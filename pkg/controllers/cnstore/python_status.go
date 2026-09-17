@@ -74,17 +74,19 @@ func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, a
 	status.LeaseEpoch = observed.LeaseEpoch
 	status.Modes = append([]string(nil), observed.Modes...)
 	status.NullPolicies = append([]string(nil), observed.NullPolicies...)
+	status.Generation = pod.Annotations[v1alpha1.UDFWorkerGenerationAnno]
 	status.ObservedAt = metav1.Now()
 
 	expectedUID := v1alpha1.GetCNPodUUID(pod)
-	if observed.CNUUID != expectedUID || observed.Language != pythonLanguage ||
+	expectedGeneration := v1alpha1.UDFWorkerPolicyGeneration(c.cn.Spec.UDFWorker)
+	if observed.CNUUID != expectedUID || status.Generation != expectedGeneration || observed.Language != pythonLanguage ||
 		!observed.Enabled || !observed.AllowUnisolated ||
 		(observed.Ready && observed.LeaseEpoch == 0) ||
 		(observed.Ready && observed.ErrorClass != "") {
 		status.Ready = false
 		status.ErrorClass = v1alpha1.UDFWorkerStatusErrorInvalid
 		status.Reason = v1alpha1.UDFWorkerStatusReasonInvalid
-		if observed.CNUUID != expectedUID {
+		if observed.CNUUID != expectedUID || status.Generation != expectedGeneration {
 			status.ErrorClass = v1alpha1.UDFWorkerStatusErrorIdentityMismatch
 			status.Reason = v1alpha1.UDFWorkerStatusReasonIdentityMismatch
 		} else if !observed.Enabled || !observed.AllowUnisolated {
@@ -139,8 +141,8 @@ func (c *withCNSet) unavailablePythonUDFStatus(pod *corev1.Pod) v1alpha1.UDFWork
 		Reason:     v1alpha1.UDFWorkerStatusReasonQueryUnavailable,
 		ObservedAt: metav1.Now(),
 	}
-	if c.cn != nil {
-		status.Generation = v1alpha1.UDFWorkerPolicyGeneration(c.cn.Spec.UDFWorker)
+	if c.cn != nil && c.cn.Spec.UDFWorker.IsEnabled() {
+		status.Generation = pod.Annotations[v1alpha1.UDFWorkerGenerationAnno]
 	}
 	if c.cn == nil || !c.cn.Spec.UDFWorker.IsEnabled() {
 		status.ErrorClass = ""

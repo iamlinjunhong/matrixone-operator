@@ -97,6 +97,7 @@ func IsUDFWorkerControllerOwnedPodAnnotation(key string) bool {
 	case CNLabelAnnotation,
 		ConfigSuffixAnno,
 		v1alpha1.UDFWorkerStatusAnno,
+		v1alpha1.UDFWorkerGenerationAnno,
 		v1alpha1.OperatorVersionAnno,
 		SemanticVersionAnno,
 		PrometheusScrapeAnno,

@@ -66,6 +66,10 @@ const (
 	// the CN-local Python runtime. It is intentionally bounded and tied to the
 	// current Pod UID and policy generation.
 	UDFWorkerStatusAnno = "matrixorigin.io/udf-worker-status"
+	// UDFWorkerGenerationAnno is copied into each CN Pod template. It binds a
+	// capability observation to the generation actually rendered into that Pod;
+	// the CN store must not stamp the desired generation onto an old Pod.
+	UDFWorkerGenerationAnno = "matrixorigin.io/udf-worker-generation"
 
 	// The direct Python image is built with the unprivileged `mo` account. The
 	// Operator repeats its numeric identity in the Pod security context because

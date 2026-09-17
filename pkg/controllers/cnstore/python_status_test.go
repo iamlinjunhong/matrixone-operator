@@ -35,9 +35,13 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 		},
 	}}
 	expectedUID := v1alpha1.GetCNPodUUID(pod)
+	pod.Annotations = map[string]string{
+		v1alpha1.UDFWorkerGenerationAnno: v1alpha1.UDFWorkerPolicyGeneration(cn.Spec.UDFWorker),
+	}
 	tests := []struct {
 		name       string
 		status     *querycli.PythonUDFStatus
+		generation string
 		wantReady  bool
 		wantError  string
 		wantReason string
@@ -49,6 +53,16 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 				AllowUnisolated: true, Ready: true, LeaseEpoch: 1,
 			},
 			wantReady: true,
+		},
+		{
+			name: "old rendered generation is rejected",
+			status: &querycli.PythonUDFStatus{
+				CNUUID: expectedUID, Language: "python", Enabled: true,
+				AllowUnisolated: true, Ready: true, LeaseEpoch: 1,
+			},
+			generation: "old-generation",
+			wantError:  v1alpha1.UDFWorkerStatusErrorIdentityMismatch,
+			wantReason: v1alpha1.UDFWorkerStatusReasonIdentityMismatch,
 		},
 		{
 			name: "runtime disabled",
@@ -81,11 +95,15 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			testPod := pod.DeepCopy()
+			if tt.generation != "" {
+				testPod.Annotations[v1alpha1.UDFWorkerGenerationAnno] = tt.generation
+			}
 			c := &withCNSet{
 				Controller: &Controller{queryCli: &fakeQueryClient{pythonStatus: tt.status}},
 				cn:         cn,
 			}
-			got := c.queryPythonUDFStatus(context.Background(), pod, "cn-0:6002")
+			got := c.queryPythonUDFStatus(context.Background(), testPod, "cn-0:6002")
 			if got.Ready != tt.wantReady {
 				t.Fatalf("ready = %v, want %v; status = %#v", got.Ready, tt.wantReady, got)
 			}

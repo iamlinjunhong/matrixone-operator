@@ -201,6 +201,9 @@ func syncUDFWorkerPodMarker(cn *v1alpha1.CNSet, meta *metav1.ObjectMeta) {
 		meta.Labels = map[string]string{}
 	}
 	if cn.Spec.UDFWorker != nil && cn.Spec.UDFWorker.Enabled {
+		if meta.Annotations == nil {
+			meta.Annotations = map[string]string{}
+		}
 		// Overlay.PodLabels runs before this function. Reassert the labels used
 		// by the CNSet selector so an enabled worker cannot make its own Pod
 		// disappear from the controller-owned Service or NetworkPolicy.
@@ -217,8 +220,10 @@ func syncUDFWorkerPodMarker(cn *v1alpha1.CNSet, meta *metav1.ObjectMeta) {
 			meta.Labels[common.MatrixoneClusterLabelKey] = cluster
 		}
 		meta.Labels[v1alpha1.UDFWorkerEnabledLabel] = v1alpha1.UDFWorkerEnabledValue
+		meta.Annotations[v1alpha1.UDFWorkerGenerationAnno] = v1alpha1.UDFWorkerPolicyGeneration(cn.Spec.UDFWorker)
 	} else {
 		delete(meta.Labels, v1alpha1.UDFWorkerEnabledLabel)
+		delete(meta.Annotations, v1alpha1.UDFWorkerGenerationAnno)
 	}
 }
 
