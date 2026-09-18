@@ -499,6 +499,36 @@ func TestAggregateUDFWorkerCapabilityRequiresCNUUIDFence(t *testing.T) {
 	if ready || count != 0 || reason != v1alpha1.UDFWorkerStatusErrorStale {
 		t.Fatalf("stale capability was accepted: ready=%v count=%d reason=%q", ready, count, reason)
 	}
+
+	observation.ObservedAt = metav1.Now()
+	observation.Reason = strings.Repeat("r", v1alpha1.UDFWorkerStatusMaxStringBytes+1)
+	raw, err = json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations[v1alpha1.UDFWorkerStatusAnno] = string(raw)
+	ready, count, reason, _ = aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if ready || count != 0 || reason != v1alpha1.UDFWorkerStatusErrorInvalid {
+		t.Fatalf("oversized capability was accepted: ready=%v count=%d reason=%q", ready, count, reason)
+	}
+
+	observation.Reason = ""
+	observation.ErrorClass = "FutureStatus"
+	raw, err = json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod.Annotations[v1alpha1.UDFWorkerStatusAnno] = string(raw)
+	ready, count, reason, _ = aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if ready || count != 0 || reason != v1alpha1.UDFWorkerStatusErrorInvalid {
+		t.Fatalf("unknown error class was accepted: ready=%v count=%d reason=%q", ready, count, reason)
+	}
+
+	pod.Annotations[v1alpha1.UDFWorkerStatusAnno] = strings.Repeat("x", v1alpha1.UDFWorkerStatusMaxAnnotationBytes+1)
+	ready, count, reason, _ = aggregateUDFWorkerCapability(policy, generation, 1, []corev1.Pod{pod})
+	if ready || count != 0 || reason != v1alpha1.UDFWorkerStatusErrorInvalid {
+		t.Fatalf("oversized raw annotation was accepted: ready=%v count=%d reason=%q", ready, count, reason)
+	}
 }
 
 func TestAggregateUDFWorkerCapabilityDoesNotReportReadyWorkersWhenScaleToZero(t *testing.T) {

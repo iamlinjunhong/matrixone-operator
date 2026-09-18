@@ -121,6 +121,17 @@ const (
 	UDFWorkerStatusReasonStale            = "PythonStatusStale"
 )
 
+// These limits are part of the bounded status contract. They apply before a
+// status observation is copied into a Kubernetes Condition or stored in a Pod
+// annotation, so a malformed or stale producer cannot turn status refreshes
+// into an unbounded control-plane payload.
+const (
+	UDFWorkerStatusMaxStringBytes     = 1024
+	UDFWorkerStatusMaxListItems       = 64
+	UDFWorkerStatusMaxListItemBytes   = 256
+	UDFWorkerStatusMaxAnnotationBytes = 64 << 10
+)
+
 // UDFWorkerPolicy is the single typed policy used at the CNSet boundary. A
 // nil policy means disabled. A non-nil policy with Enabled=false is an
 // explicit, presence-aware disable and must not create worker resources.
@@ -260,6 +271,62 @@ type UDFWorkerPodStatus struct {
 	// observation only while it is within the controller's bounded freshness
 	// window; it is not a durable liveness claim.
 	ObservedAt metav1.Time `json:"observedAt,omitempty"`
+}
+
+func IsValidUDFWorkerStatusErrorClass(value string) bool {
+	switch value {
+	case "",
+		UDFWorkerStatusErrorQueryUnavailable,
+		UDFWorkerStatusErrorIdentityMismatch,
+		UDFWorkerStatusErrorPolicyMismatch,
+		UDFWorkerStatusErrorInvalid,
+		UDFWorkerStatusErrorStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// ValidateUDFWorkerPodStatus validates the bounded, controller-facing part of
+// a per-Pod Python capability observation. Freshness and Pod/generation fences
+// are intentionally checked by the consumer because they require live state.
+func ValidateUDFWorkerPodStatus(status *UDFWorkerPodStatus) error {
+	if status == nil {
+		return fmt.Errorf("nil Python UDF worker status")
+	}
+	for name, value := range map[string]string{
+		"podUID":                  status.PodUID,
+		"cnUUID":                  status.CNUUID,
+		"generation":              status.Generation,
+		"errorClass":              status.ErrorClass,
+		"reason":                  status.Reason,
+		"abiContract":             status.ABIContract,
+		"adapterVersion":          status.AdapterVersion,
+		"sdkVersion":              status.SDKVersion,
+		"typeDescriptorContract":  status.TypeDescriptorContract,
+		"timezoneDatabaseVersion": status.TimezoneDatabaseVersion,
+	} {
+		if len(value) > UDFWorkerStatusMaxStringBytes {
+			return fmt.Errorf("Python UDF worker status %s exceeds %d bytes", name, UDFWorkerStatusMaxStringBytes)
+		}
+	}
+	if !IsValidUDFWorkerStatusErrorClass(status.ErrorClass) {
+		return fmt.Errorf("unknown Python UDF worker status error class %q", status.ErrorClass)
+	}
+	for name, values := range map[string][]string{
+		"modes":        status.Modes,
+		"nullPolicies": status.NullPolicies,
+	} {
+		if len(values) > UDFWorkerStatusMaxListItems {
+			return fmt.Errorf("Python UDF worker status %s has too many entries", name)
+		}
+		for _, value := range values {
+			if len(value) > UDFWorkerStatusMaxListItemBytes {
+				return fmt.Errorf("Python UDF worker status %s entry exceeds %d bytes", name, UDFWorkerStatusMaxListItemBytes)
+			}
+		}
+	}
+	return nil
 }
 
 // UDFWorkerPolicyGeneration returns the stable identity of the accepted

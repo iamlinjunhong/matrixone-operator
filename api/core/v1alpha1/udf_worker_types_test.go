@@ -160,6 +160,52 @@ func TestUDFWorkerPolicyGenerationCanonicalizesEffectiveDefaults(t *testing.T) {
 	}
 }
 
+func TestValidateUDFWorkerPodStatus(t *testing.T) {
+	valid := &UDFWorkerPodStatus{
+		PodUID:     "pod-uid",
+		CNUUID:     "cn-uuid",
+		Generation: "generation",
+		Ready:      true,
+		LeaseEpoch: 1,
+	}
+	if err := ValidateUDFWorkerPodStatus(valid); err != nil {
+		t.Fatalf("valid status rejected: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*UDFWorkerPodStatus)
+	}{
+		{
+			name: "unknown error class",
+			edit: func(status *UDFWorkerPodStatus) { status.ErrorClass = "FutureStatus" },
+		},
+		{
+			name: "oversized reason",
+			edit: func(status *UDFWorkerPodStatus) { status.Reason = strings.Repeat("r", UDFWorkerStatusMaxStringBytes+1) },
+		},
+		{
+			name: "oversized list",
+			edit: func(status *UDFWorkerPodStatus) { status.Modes = make([]string, UDFWorkerStatusMaxListItems+1) },
+		},
+		{
+			name: "oversized list entry",
+			edit: func(status *UDFWorkerPodStatus) {
+				status.Modes = []string{strings.Repeat("m", UDFWorkerStatusMaxListItemBytes+1)}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status := valid.DeepCopy()
+			tt.edit(status)
+			if err := ValidateUDFWorkerPodStatus(status); err == nil {
+				t.Fatal("invalid status was accepted")
+			}
+		})
+	}
+}
+
 func TestIsImmutableImageDigest(t *testing.T) {
 	valid := "registry.example/udf-worker@sha256:" + strings.Repeat("a", 64)
 	for name, image := range map[string]string{

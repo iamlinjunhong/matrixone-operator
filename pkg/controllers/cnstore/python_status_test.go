@@ -87,7 +87,7 @@ func TestQueryPythonUDFStatusRequiresCurrentRuntimePolicy(t *testing.T) {
 			status: &querycli.PythonUDFStatus{
 				CNUUID: expectedUID, Language: "python", Enabled: true,
 				AllowUnisolated: true, Ready: true, LeaseEpoch: 1,
-				Modes: make([]string, maxPythonStatusListItems+1),
+				Modes: make([]string, v1alpha1.UDFWorkerStatusMaxListItems+1),
 			},
 			wantError:  v1alpha1.UDFWorkerStatusErrorInvalid,
 			wantReason: v1alpha1.UDFWorkerStatusReasonInvalid,

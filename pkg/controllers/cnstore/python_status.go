@@ -29,13 +29,6 @@ import (
 
 const pythonLanguage = "python"
 
-const (
-	maxPythonStatusStringBytes     = 1024
-	maxPythonStatusListItems       = 64
-	maxPythonStatusListItemBytes   = 256
-	maxPythonStatusAnnotationBytes = 64 << 10
-)
-
 func (c *withCNSet) queryPythonUDFStatus(ctx context.Context, pod *corev1.Pod, address string) v1alpha1.UDFWorkerPodStatus {
 	status := c.unavailablePythonUDFStatus(pod)
 	if c == nil || pod == nil || c.cn == nil || !c.cn.Spec.UDFWorker.IsEnabled() ||
@@ -113,49 +106,27 @@ func validatePythonUDFStatusBounds(status *querycli.PythonUDFStatus) error {
 		"typeDescriptorContract":  status.TypeDescriptorContract,
 		"timezoneDatabaseVersion": status.TimezoneDatabaseVersion,
 	} {
-		if len(value) > maxPythonStatusStringBytes {
-			return fmt.Errorf("Python UDF status %s exceeds %d bytes", name, maxPythonStatusStringBytes)
+		if len(value) > v1alpha1.UDFWorkerStatusMaxStringBytes {
+			return fmt.Errorf("Python UDF status %s exceeds %d bytes", name, v1alpha1.UDFWorkerStatusMaxStringBytes)
 		}
 	}
-	if status.ErrorClass != "" && !isValidConditionReason(status.ErrorClass) {
-		return fmt.Errorf("Python UDF status errorClass is not a valid condition reason")
+	if !v1alpha1.IsValidUDFWorkerStatusErrorClass(status.ErrorClass) {
+		return fmt.Errorf("Python UDF status errorClass is not a recognized condition reason")
 	}
 	for name, values := range map[string][]string{
 		"modes":        status.Modes,
 		"nullPolicies": status.NullPolicies,
 	} {
-		if len(values) > maxPythonStatusListItems {
+		if len(values) > v1alpha1.UDFWorkerStatusMaxListItems {
 			return fmt.Errorf("Python UDF status %s has too many entries", name)
 		}
 		for _, value := range values {
-			if len(value) > maxPythonStatusListItemBytes {
-				return fmt.Errorf("Python UDF status %s entry exceeds %d bytes", name, maxPythonStatusListItemBytes)
+			if len(value) > v1alpha1.UDFWorkerStatusMaxListItemBytes {
+				return fmt.Errorf("Python UDF status %s entry exceeds %d bytes", name, v1alpha1.UDFWorkerStatusMaxListItemBytes)
 			}
 		}
 	}
 	return nil
-}
-
-func isValidConditionReason(value string) bool {
-	if value == "" || len(value) > maxPythonStatusStringBytes {
-		return value == ""
-	}
-	isLetter := func(b byte) bool {
-		return b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z'
-	}
-	isAlphaNumeric := func(b byte) bool {
-		return isLetter(b) || b >= '0' && b <= '9'
-	}
-	if !isLetter(value[0]) || !isAlphaNumeric(value[len(value)-1]) && value[len(value)-1] != '_' {
-		return false
-	}
-	for i := 1; i < len(value)-1; i++ {
-		b := value[i]
-		if !isAlphaNumeric(b) && b != '_' && b != ',' && b != ':' {
-			return false
-		}
-	}
-	return true
 }
 
 func (c *withCNSet) unavailablePythonUDFStatus(pod *corev1.Pod) v1alpha1.UDFWorkerPodStatus {
@@ -199,7 +170,7 @@ func (c *withCNSet) patchPythonUDFStatus(ctx *recon.Context[*corev1.Pod], status
 	if err != nil {
 		return errors.WrapPrefix(err, "marshal Python UDF status", 0)
 	}
-	if len(payload) > maxPythonStatusAnnotationBytes {
+	if len(payload) > v1alpha1.UDFWorkerStatusMaxAnnotationBytes {
 		// Replace the payload instead of leaving an older Ready observation in
 		// place. The fallback contains only the current Pod fence and a stable
 		// failure class, so a future status extension cannot turn annotation

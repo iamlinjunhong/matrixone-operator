@@ -339,9 +339,14 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 		}
 		var observation v1alpha1.UDFWorkerPodStatus
 		if raw := pod.Annotations[v1alpha1.UDFWorkerStatusAnno]; raw != "" {
-			if err := json.Unmarshal([]byte(raw), &observation); err != nil {
+			if len(raw) > v1alpha1.UDFWorkerStatusMaxAnnotationBytes {
 				reason = v1alpha1.UDFWorkerStatusErrorInvalid
-				message = "a CN Pod published malformed Python capability status"
+				message = "a CN Pod published an oversized Python capability status"
+				continue
+			}
+			if err := json.Unmarshal([]byte(raw), &observation); err != nil || v1alpha1.ValidateUDFWorkerPodStatus(&observation) != nil {
+				reason = v1alpha1.UDFWorkerStatusErrorInvalid
+				message = "a CN Pod published an invalid Python capability status"
 				continue
 			}
 		}
