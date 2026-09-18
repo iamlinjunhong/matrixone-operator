@@ -231,6 +231,9 @@ func TestBuildUDFWorkerNetworkPolicyAllowsCNQueryButOmitsWorkerPort(t *testing.T
 	if !allowed[int(cnQueryPort)] {
 		t.Fatalf("CN query service port %d is missing from ingress allowlist: %#v", cnQueryPort, np.Spec.Ingress[0].Ports)
 	}
+	if !allowed[int(v1alpha1.CNUDFWorkerReservedMetricsPort)] {
+		t.Fatalf("CN metrics port %d is missing from ingress allowlist: %#v", v1alpha1.CNUDFWorkerReservedMetricsPort, np.Spec.Ingress[0].Ports)
+	}
 	for offset := int32(0); offset < v1alpha1.CNUDFWorkerReservedPortSlots; offset++ {
 		port := int(v1alpha1.CNUDFWorkerReservedPortBase + offset)
 		if !allowed[port] {
@@ -239,6 +242,18 @@ func TestBuildUDFWorkerNetworkPolicyAllowsCNQueryButOmitsWorkerPort(t *testing.T
 	}
 	if np.Spec.PodSelector.MatchLabels[common.ComponentLabelKey] == "" {
 		t.Fatalf("network policy selector is not tied to the CNSet Pod labels: %#v", np.Spec.PodSelector)
+	}
+}
+
+func TestCNRendererUsesUDFWorkerPortContract(t *testing.T) {
+	if CNSQLPort != int(v1alpha1.CNUDFWorkerReservedSQLPort) {
+		t.Fatalf("SQL port = %d, want %d", CNSQLPort, v1alpha1.CNUDFWorkerReservedSQLPort)
+	}
+	if cnRPCPort != int(v1alpha1.CNUDFWorkerReservedPortBase) || cnPortBase != int(v1alpha1.CNUDFWorkerReservedPortBase) {
+		t.Fatalf("CN internal port base = rpc %d/config %d, want %d", cnRPCPort, cnPortBase, v1alpha1.CNUDFWorkerReservedPortBase)
+	}
+	if common.MetricsPort != int(v1alpha1.CNUDFWorkerReservedMetricsPort) {
+		t.Fatalf("metrics port = %d, want %d", common.MetricsPort, v1alpha1.CNUDFWorkerReservedMetricsPort)
 	}
 }
 

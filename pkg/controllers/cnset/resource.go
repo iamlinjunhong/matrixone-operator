@@ -367,7 +367,7 @@ func buildCNSetConfigMap(cn *v1alpha1.CNSet, ls *v1alpha1.LogSet, reservedOrdina
 	buff := new(bytes.Buffer)
 	err = startScriptTpl.Execute(buff, &model{
 		ConfigFilePath:         fmt.Sprintf("%s/%s", common.ConfigPath, common.ConfigFile),
-		CNSQLPort:              CNSQLPort,
+		CNSQLPort:              int(CNSQLPort),
 		CNRpcPort:              cnRPCPort,
 		LockServicePort:        common.LockServicePort,
 		InPlaceConfigMapUpdate: v1alpha1.GateInplaceConfigmapUpdate.Enabled(cn.Spec.GetOperatorVersion()),

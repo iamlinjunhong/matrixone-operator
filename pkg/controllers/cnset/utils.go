@@ -22,9 +22,9 @@ import (
 const (
 	portName   = "service"
 	nameSuffix = "-cn"
-	CNSQLPort  = 6001
-	cnRPCPort  = 6002
-	cnPortBase = 6002
+	CNSQLPort  = int(v1alpha1.CNUDFWorkerReservedSQLPort)
+	cnRPCPort  = int(v1alpha1.CNUDFWorkerReservedPortBase)
+	cnPortBase = int(v1alpha1.CNUDFWorkerReservedPortBase)
 	// cnQueryPort is the per-CN query service used by the Operator's bounded
 	// Python runtime status bridge. It is separate from the worker Flight port.
 	cnQueryPort = cnPortBase + 2
@@ -33,7 +33,7 @@ const (
 func getCNServicePort() corev1.ServicePort {
 	return corev1.ServicePort{
 		Name: portName,
-		Port: CNSQLPort,
+		Port: int32(CNSQLPort),
 	}
 }
 

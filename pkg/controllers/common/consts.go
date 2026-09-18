@@ -14,11 +14,13 @@
 
 package common
 
+import "github.com/matrixorigin/matrixone-operator/api/core/v1alpha1"
+
 const (
 	LockServicePort = 6003
 	LogtailPort     = 32003
 
-	MetricsPort = 7001
+	MetricsPort = int(v1alpha1.CNUDFWorkerReservedMetricsPort)
 
 	DeletionCostAnno = "controller.kubernetes.io/pod-deletion-cost"
 
