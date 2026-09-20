@@ -9,6 +9,9 @@
 package querycli
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
@@ -75,5 +78,37 @@ func TestPythonUDFStatusRPCMessageBound(t *testing.T) {
 	}
 	if maxPythonStatusRPCBytes > 1<<20 {
 		t.Fatalf("RPC bound %d is too large for a control-plane status message", maxPythonStatusRPCBytes)
+	}
+}
+
+// Literal producer bytes from MO's current query.Response, not a round trip
+// through this consumer's own struct tags.
+func TestPythonStatusMOProducerFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/python_status_wire.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []struct{ Class, Reason, Wire string }
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		t.Run(row.Reason, func(t *testing.T) {
+			wire, err := base64.StdEncoding.DecodeString(row.Wire)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response pythonUDFStatusResponse
+			if err := response.Unmarshal(wire); err != nil {
+				t.Fatal(err)
+			}
+			if err := validatePythonUDFStatusResponse(7, &response); err != nil {
+				t.Fatal(err)
+			}
+			body := response.GetPythonUdfStatus
+			if body == nil || body.ErrorClass != row.Class || body.Reason != row.Reason || body.Ready != (row.Class == "") {
+				t.Fatalf("lost runtime contract: %#v", body)
+			}
+		})
 	}
 }

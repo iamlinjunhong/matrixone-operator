@@ -150,8 +150,7 @@ func normalizeUDFWorkerConfigValue(value interface{}) interface{} {
 
 // validateUDFWorkerRendering is the controller-side mirror of the webhook's
 // effective-policy checks. It runs before any CNSet-owned object is mutated so
-// a restored object or a webhook bypass cannot leave a partial Worker or
-// NetworkPolicy behind.
+// a restored object or a webhook bypass cannot leave a partial Worker configuration behind.
 func validateUDFWorkerRendering(cn *v1alpha1.CNSet) error {
 	if cn == nil {
 		return nil
@@ -206,7 +205,7 @@ func syncUDFWorkerPodMarker(cn *v1alpha1.CNSet, meta *metav1.ObjectMeta) {
 		}
 		// Overlay.PodLabels runs before this function. Reassert the labels used
 		// by the CNSet selector so an enabled worker cannot make its own Pod
-		// disappear from the controller-owned Service or NetworkPolicy.
+		// disappear from the controller-owned Service.
 		for key, value := range common.SubResourceLabels(cn) {
 			if value != "" {
 				meta.Labels[key] = value
@@ -364,6 +363,12 @@ func aggregateUDFWorkerCapability(policy *v1alpha1.UDFWorkerPolicy, generation s
 			continue
 		}
 		expectedCNUUID := v1alpha1.GetCNPodUUID(pod)
+		if observation.PodUID != string(pod.UID) || observation.CNUUID != expectedCNUUID || observation.Generation != generation {
+			reason = v1alpha1.UDFWorkerStatusErrorIdentityMismatch
+			message = v1alpha1.UDFWorkerStatusReasonIdentityMismatch
+			continue
+		}
+
 		if observation.Ready && observation.PodUID == string(pod.UID) &&
 			observation.CNUUID == expectedCNUUID && observation.Generation == generation &&
 			observation.LeaseEpoch != 0 && observation.ErrorClass == "" {

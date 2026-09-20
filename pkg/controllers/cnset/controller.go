@@ -363,18 +363,16 @@ func (c *Actor) Finalize(ctx *recon.Context[*v1alpha1.CNSet]) (bool, error) {
 			return false, nil
 		}
 	}
-	if live, err := c.hasLiveUDFWorkerPods(ctx); err != nil {
+	if live, err := c.hasLiveCNPods(ctx); err != nil {
 		return false, err
 	} else if live {
 		// Deleting the CloneSet object does not synchronously guarantee that all
-		// Pods have disappeared. Keep the policy until the last old Worker Pod
+		// Pods have disappeared. Keep the policy until the last CN Pod
 		// is gone, then let the next reconcile remove it.
 		return false, nil
 	}
-	// Keep the worker ingress baseline until the CN workload and its services
-	// have disappeared. Removing the policy first would create a deletion
-	// window in which a still-running worker is exposed with no Operator-owned
-	// ingress restriction.
+	// Keep the legacy isolation anchor through disable rollouts too: a CN-only
+	// Pod is still selected by it. Remove only after every CN Pod has gone.
 	if err := deleteOwnedUDFWorkerNetworkPolicy(ctx); err != nil {
 		return false, err
 	}
@@ -622,37 +620,6 @@ func ensureUDFWorkerConfigOwnership(ctx *recon.Context[*v1alpha1.CNSet], desired
 	return nil
 }
 
-func (c *Actor) syncUDFWorkerNetworkPolicy(ctx *recon.Context[*v1alpha1.CNSet]) error {
-	desired := buildUDFWorkerNetworkPolicy(ctx.Obj)
-	if desired == nil {
-		if live, err := c.hasLiveUDFWorkerPods(ctx); err != nil {
-			return err
-		} else if live {
-			return recon.ErrReSync("wait for old Python UDF worker Pods to disappear before removing NetworkPolicy", reSyncAfter)
-		}
-		return deleteOwnedUDFWorkerNetworkPolicy(ctx)
-	}
-
-	current := &networkingv1.NetworkPolicy{}
-	key := client.ObjectKey{Namespace: ctx.Obj.Namespace, Name: udfWorkerNetworkPolicyName(ctx.Obj)}
-	if err := ctx.Get(key, current); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return err
-		}
-		return ctx.CreateOwned(desired)
-	}
-	if !metav1.IsControlledBy(current, ctx.Obj) {
-		return errors.Errorf("UDFWorkerNetworkPolicyNameConflict: %s/%s is not controlled by CNSet %s", current.Namespace, current.Name, ctx.Obj.Name)
-	}
-	if equality.Semantic.DeepEqual(current.Spec, desired.Spec) {
-		return nil
-	}
-	return ctx.Patch(current, func() error {
-		current.Spec = desired.Spec
-		return nil
-	})
-}
-
 // hasLiveUDFWorkerPods finds old same-Pod workers by the controller-owned
 // marker or by the authoritative Worker container name. The marker is the
 // fast path, but inspecting the template also protects cleanup if a stale or
@@ -686,12 +653,11 @@ func deleteOwnedUDFWorkerNetworkPolicy(ctx *recon.Context[*v1alpha1.CNSet]) erro
 	}
 	if !metav1.IsControlledBy(current, ctx.Obj) {
 		// A deterministic name collision must never allow the CNSet controller
-		// to delete a policy it did not create. Leave it untouched and let a
-		// future enabled policy report the same conflict explicitly.
+		// to delete a policy it did not create. Platform policies stay untouched.
 		ctx.Log.Info("leave unowned UDF worker NetworkPolicy in place", "networkPolicy", key)
 		return nil
 	}
-	return util.Ignore(apierrors.IsNotFound, ctx.Delete(current))
+	return util.Ignore(apierrors.IsNotFound, ctx.Delete(current, client.Preconditions{UID: &current.UID, ResourceVersion: &current.ResourceVersion}))
 }
 
 // fetchLogSetReservedOrdinals fetches the kruise StatefulSet that backs the given LogSet and

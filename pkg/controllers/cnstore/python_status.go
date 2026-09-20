@@ -110,7 +110,7 @@ func validatePythonUDFStatusBounds(status *querycli.PythonUDFStatus) error {
 			return fmt.Errorf("Python UDF status %s exceeds %d bytes", name, v1alpha1.UDFWorkerStatusMaxStringBytes)
 		}
 	}
-	if !v1alpha1.IsValidUDFWorkerStatusErrorClass(status.ErrorClass) {
+	if !v1alpha1.IsValidUDFRuntimeErrorClass(status.ErrorClass) {
 		return fmt.Errorf("Python UDF status errorClass is not a recognized condition reason")
 	}
 	for name, values := range map[string][]string{

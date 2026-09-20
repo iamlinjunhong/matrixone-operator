@@ -10,6 +10,7 @@ package cnset
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -21,7 +22,6 @@ import (
 	kruisev1alpha1 "github.com/openkruise/kruise-api/apps/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -206,42 +206,6 @@ func TestBuildCNSetConfigMapRejectsStalePythonClient(t *testing.T) {
 	ls := &v1alpha1.LogSet{Spec: v1alpha1.LogSetSpec{SharedStorage: v1alpha1.SharedStorageProvider{FileSystem: &v1alpha1.FileSystemProvider{Path: "/shared"}}}, Status: v1alpha1.LogSetStatus{Discovery: &v1alpha1.LogSetDiscovery{Address: "log", Port: 6001}}}
 	if _, _, err := buildCNSetConfigMap(cn, ls, nil); err == nil || !strings.Contains(err.Error(), "PythonClientConfigManagedByUDFWorkerPolicy") {
 		t.Fatalf("buildCNSetConfigMap error = %v, want stale client rejection", err)
-	}
-}
-
-func TestBuildUDFWorkerNetworkPolicyAllowsCNQueryButOmitsWorkerPort(t *testing.T) {
-	cn := &v1alpha1.CNSet{
-		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "CNSet"},
-		ObjectMeta: metav1.ObjectMeta{Name: "cn", Namespace: "ns"},
-		Spec:       v1alpha1.CNSetSpec{ConfigThatChangeCNSpec: v1alpha1.ConfigThatChangeCNSpec{UDFWorker: cnSetUDFWorkerPolicyForTest()}},
-	}
-	np := buildUDFWorkerNetworkPolicy(cn)
-	if np == nil || len(np.Spec.Ingress) != 1 {
-		t.Fatalf("network policy = %#v", np)
-	}
-	allowed := map[int]bool{}
-	for _, port := range np.Spec.Ingress[0].Ports {
-		if port.Port != nil {
-			allowed[port.Port.IntValue()] = true
-		}
-		if port.Port != nil && port.Port.IntValue() == v1alpha1.ContainerUDFWorkerDefaultPort {
-			t.Fatalf("worker port is present in ingress allowlist: %#v", np.Spec.Ingress[0].Ports)
-		}
-	}
-	if !allowed[int(cnQueryPort)] {
-		t.Fatalf("CN query service port %d is missing from ingress allowlist: %#v", cnQueryPort, np.Spec.Ingress[0].Ports)
-	}
-	if !allowed[int(v1alpha1.CNUDFWorkerReservedMetricsPort)] {
-		t.Fatalf("CN metrics port %d is missing from ingress allowlist: %#v", v1alpha1.CNUDFWorkerReservedMetricsPort, np.Spec.Ingress[0].Ports)
-	}
-	for offset := int32(0); offset < v1alpha1.CNUDFWorkerReservedPortSlots; offset++ {
-		port := int(v1alpha1.CNUDFWorkerReservedPortBase + offset)
-		if !allowed[port] {
-			t.Fatalf("CN internal service port %d is missing from ingress allowlist: %#v", port, np.Spec.Ingress[0].Ports)
-		}
-	}
-	if np.Spec.PodSelector.MatchLabels[common.ComponentLabelKey] == "" {
-		t.Fatalf("network policy selector is not tied to the CNSet Pod labels: %#v", np.Spec.PodSelector)
 	}
 }
 
@@ -559,57 +523,53 @@ func TestAggregateUDFWorkerCapabilityDoesNotReportReadyWorkersWhenScaleToZero(t 
 	}
 }
 
-func TestUDFWorkerNetworkPolicyDeletionWaitsForOldWorkerPods(t *testing.T) {
-	cn := &v1alpha1.CNSet{
-		TypeMeta: metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "CNSet"},
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "ns",
-			Name:      "cn",
-			UID:       "cn-uid",
-		},
-	}
-	labels := common.SubResourceLabels(cn)
-	labels[v1alpha1.UDFWorkerEnabledLabel] = v1alpha1.UDFWorkerEnabledValue
-	np := &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       cn.Namespace,
-			Name:            udfWorkerNetworkPolicyName(cn),
-			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(cn, v1alpha1.GroupVersion.WithKind("CNSet"))},
-		},
-	}
-	oldPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{
-		Namespace: cn.Namespace,
-		Name:      "old-worker-pod",
-		Labels:    labels,
-	}}
-	cli := reconfake.KubeClientBuilder().WithScheme(newScheme()).WithObjects(np, oldPod).Build()
-	ctx := reconfake.NewContext(cn, cli, nil)
-
-	if err := (&Actor{}).syncUDFWorkerNetworkPolicy(ctx); err == nil {
-		t.Fatal("disabling Python must wait while the old Worker Pod is live")
-	}
-	current := &networkingv1.NetworkPolicy{}
-	if err := cli.Get(ctx, client.ObjectKeyFromObject(np), current); err != nil {
-		t.Fatalf("NetworkPolicy was removed while old Worker Pod was live: %v", err)
-	}
-
-	delete(oldPod.Labels, v1alpha1.UDFWorkerEnabledLabel)
-	oldPod.Spec.Containers = []corev1.Container{{Name: v1alpha1.ContainerUDFWorker}}
-	if err := cli.Update(ctx, oldPod); err != nil {
-		t.Fatal(err)
-	}
-	if err := (&Actor{}).syncUDFWorkerNetworkPolicy(ctx); err == nil {
-		t.Fatal("cleanup must also detect a Worker Pod whose marker was removed")
-	}
-
-	if err := cli.Delete(ctx, oldPod); err != nil {
-		t.Fatal(err)
-	}
-	if err := (&Actor{}).syncUDFWorkerNetworkPolicy(ctx); err != nil {
-		t.Fatalf("remove NetworkPolicy after Worker Pod termination: %v", err)
-	}
-	if err := cli.Get(ctx, client.ObjectKeyFromObject(np), current); !apierrors.IsNotFound(err) {
-		t.Fatalf("NetworkPolicy lookup after cleanup = %v, want NotFound", err)
+func TestUDFWorkerNetworkingPreservesPlatformPolicies(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		for _, owned := range []bool{false, true} {
+			t.Run(fmt.Sprintf("enabled=%v/legacy-owned=%v", enabled, owned), func(t *testing.T) {
+				cn := &v1alpha1.CNSet{TypeMeta: metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: "CNSet"}, ObjectMeta: metav1.ObjectMeta{Name: "cn", Namespace: "ns", UID: "cn-uid"}}
+				if enabled {
+					cn.Spec.UDFWorker = cnSetUDFWorkerPolicyForTest()
+				}
+				platform := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: "platform-cn-ingress", Namespace: "ns"}, Spec: networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: common.SubResourceLabels(cn)}, PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress}}}
+				platform.Spec.Ingress = platformIngressRules()
+				legacy := platform.DeepCopy()
+				legacy.Name = udfWorkerNetworkPolicyName(cn)
+				if owned {
+					legacy.OwnerReferences = []metav1.OwnerReference{*metav1.NewControllerRef(cn, v1alpha1.GroupVersion.WithKind("CNSet"))}
+				}
+				pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "live-worker", Namespace: "ns", Labels: common.SubResourceLabels(cn)}, Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: v1alpha1.ContainerUDFWorker, Command: []string{"python", "-u", "worker.py"}, Args: []string{"--address=grpc://127.0.0.1:50051"}}}}}
+				cli := reconfake.KubeClientBuilder().WithScheme(newScheme()).WithObjects(platform, legacy, pod).Build()
+				ctx := reconfake.NewContext(cn, cli, nil)
+				for i := 0; i < 2; i++ {
+					if err := (&Actor{}).syncUDFWorkerNetworkPolicy(ctx); err != nil {
+						t.Fatal(err)
+					}
+				}
+				policies := &networkingv1.NetworkPolicyList{}
+				if err := cli.List(ctx, policies); err != nil {
+					t.Fatal(err)
+				}
+				want := 2
+				if len(policies.Items) != want {
+					t.Fatalf("created/recreated policy: %#v", policies.Items)
+				}
+				current := &networkingv1.NetworkPolicy{}
+				if err := cli.Get(ctx, client.ObjectKeyFromObject(platform), current); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(platform.Spec, current.Spec) {
+					t.Fatal("Python changed platform ingress")
+				}
+				err := cli.Get(ctx, client.ObjectKeyFromObject(legacy), current)
+				if owned && (err != nil || len(current.Spec.Ingress) != 0) {
+					t.Fatalf("legacy isolation anchor lost: %v", err)
+				}
+				if !owned && (err != nil || !reflect.DeepEqual(legacy.Spec, current.Spec)) {
+					t.Fatal("unowned collision changed")
+				}
+			})
+		}
 	}
 }
 

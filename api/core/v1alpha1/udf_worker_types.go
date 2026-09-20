@@ -273,7 +273,21 @@ type UDFWorkerPodStatus struct {
 	ObservedAt metav1.Time `json:"observedAt,omitempty"`
 }
 
+// IsValidUDFRuntimeErrorClass recognizes only errors produced by MO's Python
+// runtime status protocol. Controller observation failures are a separate set.
+func IsValidUDFRuntimeErrorClass(value string) bool {
+	switch value {
+	case "", "DISABLED", "NOT_ALLOWED", "UNAVAILABLE", "CONTRACT_MISMATCH", "TIMEOUT", "CLOSED", "INVALID", "INTERNAL":
+		return true
+	default:
+		return false
+	}
+}
+
 func IsValidUDFWorkerStatusErrorClass(value string) bool {
+	if IsValidUDFRuntimeErrorClass(value) {
+		return true
+	}
 	switch value {
 	case "",
 		UDFWorkerStatusErrorQueryUnavailable,

@@ -31,9 +31,7 @@ import (
 	"github.com/matrixorigin/matrixone-operator/pkg/controllers/logset"
 	"github.com/openkruise/kruise-api/apps/pub"
 	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 // for MO < v1.0.0, service-address (and port) must be configured for each rpc service;
@@ -119,45 +117,6 @@ func buildCNSet(cn *v1alpha1.CNSet, headlessSvc *corev1.Service) *kruisev1alpha1
 	// NB: set subdomain to make the ${POD_NAME}.${HEADLESS_SVC_NAME}.${NS} DNS record resolvable
 	tpl.Spec.Template.Spec.Subdomain = headlessSvc.Name
 	return tpl
-}
-
-// buildUDFWorkerNetworkPolicy creates the controller-owned ingress allowlist
-// for an enabled same-Pod worker. The worker itself is bound to loopback and
-// is intentionally absent from this list; the listed ports are the CN ports
-// that existing clients must continue to reach. A cluster may add additional
-// policies, but this object provides the Operator-owned baseline and makes the
-// worker port absent from the generated allowlist.
-func buildUDFWorkerNetworkPolicy(cn *v1alpha1.CNSet) *networkingv1.NetworkPolicy {
-	if cn.Spec.UDFWorker == nil || !cn.Spec.UDFWorker.Enabled {
-		return nil
-	}
-	ports := []networkingv1.NetworkPolicyPort{
-		{Port: func() *intstr.IntOrString { v := intstr.FromInt(CNSQLPort); return &v }()},
-	}
-	// port-base allocates one port for every CN internal service slot. The
-	// policy must preserve the complete CN control/data plane when it is
-	// enabled; allowing only the services used by the Operator would silently
-	// break Gossip or Shard traffic.
-	for offset := int32(0); offset < v1alpha1.CNUDFWorkerReservedPortSlots; offset++ {
-		port := intstr.FromInt(int(v1alpha1.CNUDFWorkerReservedPortBase + offset))
-		ports = append(ports, networkingv1.NetworkPolicyPort{Port: &port})
-	}
-	metricsPort := intstr.FromInt(common.MetricsPort)
-	ports = append(ports, networkingv1.NetworkPolicyPort{Port: &metricsPort})
-	return &networkingv1.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      udfWorkerNetworkPolicyName(cn),
-			Namespace: cn.Namespace,
-			Labels:    common.SubResourceLabels(cn),
-		},
-		Spec: networkingv1.NetworkPolicySpec{
-			PodSelector: metav1.LabelSelector{MatchLabels: common.SubResourceLabels(cn)},
-			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
-			Ingress: []networkingv1.NetworkPolicyIngressRule{{
-				Ports: ports,
-			}},
-		},
-	}
 }
 
 func syncPersistentVolumeClaim(cn *v1alpha1.CNSet, cs *kruisev1alpha1.CloneSet) {
