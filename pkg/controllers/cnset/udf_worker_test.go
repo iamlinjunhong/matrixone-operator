@@ -58,6 +58,9 @@ func TestSyncPodSpecRendersAuthoritativeUDFWorker(t *testing.T) {
 		t.Fatalf("container count = %d, want main + worker", got)
 	}
 	worker := cs.Spec.Template.Spec.Containers[1]
+	if !reflect.DeepEqual(worker.Command, []string{"/usr/bin/tini", "--", "python", "-u", "worker.py"}) {
+		t.Fatalf("worker must retain the orphan reaper: %q", worker.Command)
+	}
 	if worker.Name != v1alpha1.ContainerUDFWorker {
 		t.Fatalf("worker name = %q", worker.Name)
 	}

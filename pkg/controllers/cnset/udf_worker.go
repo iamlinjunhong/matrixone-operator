@@ -441,7 +441,7 @@ func authoritativeUDFWorkerContainer(policy *v1alpha1.UDFWorkerPolicy) corev1.Co
 		ImagePullPolicy:          policy.EffectiveImagePullPolicy(),
 		TerminationMessagePath:   corev1.TerminationMessagePathDefault,
 		TerminationMessagePolicy: corev1.TerminationMessageReadFile,
-		Command:                  []string{"python", "-u", "worker.py"},
+		Command:                  []string{"/usr/bin/tini", "--", "python", "-u", "worker.py"},
 		Args:                     []string{fmt.Sprintf("--address=grpc://127.0.0.1:%d", port)},
 		Resources:                *policy.Worker.Resources.DeepCopy(),
 		Ports: []corev1.ContainerPort{{

@@ -15,6 +15,13 @@ not against CN code, Pod exec, privileged nodes or a sandbox escape. External
 workers remain outside this profile and require their own authenticated and
 restricted network design.
 
+The worker image must include `/usr/bin/tini`. The Operator's authoritative
+command runs `tini -- python -u worker.py`; overriding the image entrypoint must
+not discard this init process. Python waits for direct handler/watchdog children,
+while init adopts and reaps orphaned descendants after a handler leader exits.
+Process-group termination alone does not release zombie PID entries. Existing
+worker images without init must be replaced before using this renderer.
+
 On upgrade an obsolete deterministic Python policy controlled by this CNSet UID
 is retired conservatively. Before removing its grants, a platform ingress
 baseline must select both the stable CNSet labels and the fully rendered future
