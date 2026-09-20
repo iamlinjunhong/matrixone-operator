@@ -286,6 +286,31 @@ func TestSyncPodMetaProjectsPoolLifecycleLabelsAfterOverlay(t *testing.T) {
 	if got := cs.Spec.Template.Labels["example.com/label"]; got != "kept" {
 		t.Fatalf("user label = %q, want kept", got)
 	}
+	cn.Labels[v1alpha1.PodOutdatedLabel] = "y"
+	if err := syncPodMeta(cn, cs); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cs.Spec.Template.Labels[v1alpha1.PodOutdatedLabel]; !ok {
+		t.Fatal("legacy Pod must be excluded from claims")
+	}
+	delete(cn.Labels, v1alpha1.PodOutdatedLabel)
+	if err := syncPodMeta(cn, cs); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cs.Spec.Template.Labels[v1alpha1.PodOutdatedLabel]; ok {
+		t.Fatal("current revision retained outdated marker")
+	}
+	// An existing disabled pool can still carry the historical overlay marker
+	// until its pool controller migrates the CNSet metadata.
+	cn.Spec.UDFWorker = nil
+	cn.Spec.Overlay.PodLabels[v1alpha1.PodOutdatedLabel] = "y"
+	if err := syncPodMeta(cn, cs); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cs.Spec.Template.Labels[v1alpha1.PodOutdatedLabel]; !ok {
+		t.Fatal("legacy disabled pool lost its claim exclusion")
+	}
+
 }
 
 func TestUDFWorkerStatusRequiresAuthoritativeTemplate(t *testing.T) {

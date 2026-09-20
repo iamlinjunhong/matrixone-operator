@@ -37,16 +37,16 @@ func TestSyncUDFWorkerClusterStatusAggregatesCNSetState(t *testing.T) {
 		{Name: "ap", CNSetSpec: v1alpha1.CNSetSpec{PodSet: v1alpha1.PodSet{Replicas: 1}}},
 	}
 	current := []v1alpha1.CNSet{
-		{ObjectMeta: metav1.ObjectMeta{Name: "mo-tp"}, Status: v1alpha1.CNSetStatus{UDFWorker: readyUDFWorkerStatus(2, "gen-a")}},
-		{ObjectMeta: metav1.ObjectMeta{Name: "mo-ap"}, Status: v1alpha1.CNSetStatus{UDFWorker: waitingUDFWorkerStatus("gen-a")}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "mo-tp"}, Status: v1alpha1.CNSetStatus{UDFWorker: readyUDFWorkerStatus(2, v1alpha1.UDFWorkerPolicyGeneration(policy))}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "mo-ap"}, Status: v1alpha1.CNSetStatus{UDFWorker: waitingUDFWorkerStatus(v1alpha1.UDFWorkerPolicyGeneration(policy))}},
 	}
-	desired := map[string]bool{"mo-tp": true, "mo-ap": true}
+	desired := desiredUDFSetsForTest(current, policy)
 
 	syncUDFWorkerClusterStatus(mo, groups, current, desired)
 	if mo.Status.UDFWorker.DesiredWorkers != 3 || mo.Status.UDFWorker.ReadyWorkers != 2 {
 		t.Fatalf("worker counts = %d/%d, want 3/2", mo.Status.UDFWorker.DesiredWorkers, mo.Status.UDFWorker.ReadyWorkers)
 	}
-	if mo.Status.UDFWorker.Generation != "gen-a" {
+	if mo.Status.UDFWorker.Generation != v1alpha1.UDFWorkerPolicyGeneration(policy) {
 		t.Fatalf("generation = %q, want gen-a", mo.Status.UDFWorker.Generation)
 	}
 	capability := findUDFWorkerCondition(mo.Status.UDFWorker.Conditions, v1alpha1.UDFWorkerConditionCapabilityReady)
@@ -86,8 +86,8 @@ func TestSyncUDFWorkerClusterStatusIsStableAcrossReconcile(t *testing.T) {
 	policy := &v1alpha1.UDFWorkerPolicy{Enabled: true, Topology: v1alpha1.UDFWorkerTopologyPaired}
 	mo := &v1alpha1.MatrixOneCluster{Spec: v1alpha1.MatrixOneClusterSpec{UDFWorker: policy}}
 	groups := []v1alpha1.CNGroup{{Name: "tp", CNSetSpec: v1alpha1.CNSetSpec{PodSet: v1alpha1.PodSet{Replicas: 1}}}}
-	current := []v1alpha1.CNSet{{ObjectMeta: metav1.ObjectMeta{Name: "mo-tp"}, Status: v1alpha1.CNSetStatus{UDFWorker: readyUDFWorkerStatus(1, "gen-a")}}}
-	desired := map[string]bool{"mo-tp": true}
+	current := []v1alpha1.CNSet{{ObjectMeta: metav1.ObjectMeta{Name: "mo-tp"}, Status: v1alpha1.CNSetStatus{UDFWorker: readyUDFWorkerStatus(1, v1alpha1.UDFWorkerPolicyGeneration(policy))}}}
+	desired := desiredUDFSetsForTest(current, policy)
 
 	syncUDFWorkerClusterStatus(mo, groups, current, desired)
 	want := mo.Status.UDFWorker.DeepCopy()
@@ -204,5 +204,86 @@ func completeUDFWorkerConditions(capabilityReady bool) []metav1.Condition {
 			}
 			return metav1.ConditionTrue
 		}(), Reason: reason, Message: message},
+	}
+}
+
+func desiredUDFSetsForTest(current []v1alpha1.CNSet, policy *v1alpha1.UDFWorkerPolicy) map[string]*v1alpha1.CNSet {
+	desired := make(map[string]*v1alpha1.CNSet, len(current))
+	for i := range current {
+		current[i].Spec.UDFWorker = policy.DeepCopy()
+		desired[current[i].Name] = current[i].DeepCopy()
+	}
+	return desired
+}
+
+func TestClusterUDFStatusRejectsStaleChildObservations(t *testing.T) {
+	policy := &v1alpha1.UDFWorkerPolicy{Enabled: true, Topology: v1alpha1.UDFWorkerTopologyPaired}
+	generation := v1alpha1.UDFWorkerPolicyGeneration(policy)
+	for _, tc := range []struct {
+		name   string
+		mutate func(*v1alpha1.CNSet)
+	}{
+		{"old status policy", func(cn *v1alpha1.CNSet) { cn.Status.UDFWorker.Generation = "old" }},
+		{"cached old policy", func(cn *v1alpha1.CNSet) {
+			cn.Spec.UDFWorker.Worker.Port = 50052
+			cn.Status.UDFWorker.Generation = v1alpha1.UDFWorkerPolicyGeneration(cn.Spec.UDFWorker)
+		}},
+		{"unobserved generation", func(cn *v1alpha1.CNSet) {
+			for i := range cn.Status.UDFWorker.Conditions {
+				cn.Status.UDFWorker.Conditions[i].ObservedGeneration--
+			}
+		}},
+		{"cached old child", func(cn *v1alpha1.CNSet) {
+			cn.Generation--
+			for i := range cn.Status.UDFWorker.Conditions {
+				cn.Status.UDFWorker.Conditions[i].ObservedGeneration = cn.Generation
+			}
+		}},
+		{"same policy replica change", func(cn *v1alpha1.CNSet) { cn.Spec.Replicas = 2 }},
+		{"replaced child UID", func(cn *v1alpha1.CNSet) { cn.UID = "previous" }},
+		{"missing degraded", func(cn *v1alpha1.CNSet) { cn.Status.UDFWorker.Conditions = cn.Status.UDFWorker.Conditions[:6] }},
+		{"unknown degraded", func(cn *v1alpha1.CNSet) { cn.Status.UDFWorker.Conditions[6].Status = metav1.ConditionUnknown }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mo := &v1alpha1.MatrixOneCluster{ObjectMeta: metav1.ObjectMeta{Generation: 17}, Spec: v1alpha1.MatrixOneClusterSpec{UDFWorker: policy}}
+			groups := []v1alpha1.CNGroup{{CNSetSpec: v1alpha1.CNSetSpec{PodSet: v1alpha1.PodSet{Replicas: 2}}}}
+			current := []v1alpha1.CNSet{}
+			for _, name := range []string{"mo-a", "mo-b"} {
+				cn := v1alpha1.CNSet{ObjectMeta: metav1.ObjectMeta{Name: name, UID: types.UID(name), Generation: 3}}
+				cn.Spec.Replicas = 1
+				cn.Status.UDFWorker = readyUDFWorkerStatus(1, generation)
+				for i := range cn.Status.UDFWorker.Conditions {
+					cn.Status.UDFWorker.Conditions[i].ObservedGeneration = cn.Generation
+				}
+				current = append(current, cn)
+			}
+			desired := desiredUDFSetsForTest(current, policy)
+			tc.mutate(&current[0])
+			syncUDFWorkerClusterStatus(mo, groups, current, desired)
+			if mo.Status.UDFWorker.ReadyWorkers != 1 || mo.Status.UDFWorker.Generation != generation {
+				t.Fatalf("stale child contributed readiness: %+v", mo.Status.UDFWorker)
+			}
+			for _, typ := range []string{v1alpha1.UDFWorkerConditionCapabilityReady, v1alpha1.UDFWorkerConditionRouteReady, v1alpha1.UDFWorkerConditionDegraded} {
+				c := findUDFWorkerCondition(mo.Status.UDFWorker.Conditions, typ)
+				want := metav1.ConditionFalse
+				if typ == v1alpha1.UDFWorkerConditionDegraded {
+					want = metav1.ConditionTrue
+				}
+				if c == nil || c.Status != want || c.ObservedGeneration != mo.Generation {
+					t.Fatalf("stale %s: %+v", typ, c)
+				}
+			}
+			current[0] = *desired["mo-a"].DeepCopy()
+			syncUDFWorkerClusterStatus(mo, groups, current, desired)
+			if mo.Status.UDFWorker.ReadyWorkers != 2 {
+				t.Fatalf("recovery count: %+v", mo.Status.UDFWorker)
+			}
+			if c := findUDFWorkerCondition(mo.Status.UDFWorker.Conditions, v1alpha1.UDFWorkerConditionRouteReady); c.Status != metav1.ConditionTrue {
+				t.Fatalf("recovery: %+v", c)
+			}
+			if c := findUDFWorkerCondition(mo.Status.UDFWorker.Conditions, v1alpha1.UDFWorkerConditionDegraded); c.Status != metav1.ConditionFalse {
+				t.Fatalf("recovery: %+v", c)
+			}
+		})
 	}
 }

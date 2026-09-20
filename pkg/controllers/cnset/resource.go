@@ -189,6 +189,18 @@ func syncPodMeta(cn *v1alpha1.CNSet, cs *kruisev1alpha1.CloneSet) error {
 		}
 		cs.Spec.Template.Labels[v1alpha1.PoolNameLabel] = poolName
 		cs.Spec.Template.Labels[v1alpha1.CNPodPhaseLabel] = v1alpha1.CNPodPhaseUnknown
+		_, outdated := cn.Labels[v1alpha1.PodOutdatedLabel]
+		if cn.Spec.Overlay != nil {
+			// Preserve a legacy disabled pool's exclusion until its controller
+			// migrates metadata. Enabled policies reject this overlay at entry.
+			_, legacyOutdated := cn.Spec.Overlay.PodLabels[v1alpha1.PodOutdatedLabel]
+			outdated = outdated || legacyOutdated
+		}
+		if outdated {
+			cs.Spec.Template.Labels[v1alpha1.PodOutdatedLabel] = "y"
+		} else {
+			delete(cs.Spec.Template.Labels, v1alpha1.PodOutdatedLabel)
+		}
 	}
 	syncUDFWorkerPodMarker(cn, &cs.Spec.Template.ObjectMeta)
 	return nil

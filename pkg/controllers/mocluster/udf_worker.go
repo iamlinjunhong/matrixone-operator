@@ -30,7 +30,7 @@ func syncUDFWorkerClusterStatus(
 	mo *v1alpha1.MatrixOneCluster,
 	groups []v1alpha1.CNGroup,
 	current []v1alpha1.CNSet,
-	desired map[string]bool,
+	desired map[string]*v1alpha1.CNSet,
 ) {
 	policy := mo.Spec.UDFWorker
 	status := &mo.Status.UDFWorker
@@ -54,24 +54,16 @@ func syncUDFWorkerClusterStatus(
 	}
 
 	sets := make(map[string]*v1alpha1.CNSet, len(current))
-	generations := make(map[string]struct{}, len(current))
+	// Generation describes the desired policy. Ready counts/conditions below
+	// include only observations of the exact children returned by reconciliation.
+	status.Generation = v1alpha1.UDFWorkerPolicyGeneration(policy)
 	for i := range current {
 		cn := &current[i]
-		if !desired[cn.Name] {
+		if !currentCNSetUDFWorkerStatus(cn, desired[cn.Name], status.Generation) {
 			continue
 		}
 		sets[cn.Name] = cn
 		status.ReadyWorkers += cn.Status.UDFWorker.ReadyWorkers
-		if generation := cn.Status.UDFWorker.Generation; generation != "" {
-			generations[generation] = struct{}{}
-		}
-	}
-	if len(generations) == 1 {
-		for generation := range generations {
-			status.Generation = generation
-		}
-	} else if len(generations) > 1 {
-		status.Generation = "mixed"
 	}
 
 	setClusterUDFWorkerCondition(mo, status, v1alpha1.UDFWorkerConditionEnabled, metav1.ConditionTrue,
@@ -112,6 +104,34 @@ func syncUDFWorkerClusterStatus(
 		"NoDrainRequested", "the Operator has not requested a Python UDF drain")
 }
 
+// A cache read can lag the successful child write. Fence the child identity and
+// metadata generation as well as the policy hash; replicas/image changes need
+// fresh observation even when the Python policy itself did not change.
+func currentCNSetUDFWorkerStatus(cn, desired *v1alpha1.CNSet, generation string) bool {
+	if desired == nil || cn.UID != desired.UID || cn.Generation != desired.Generation ||
+		cn.DeletionTimestamp != nil || cn.Spec.Replicas != desired.Spec.Replicas ||
+		v1alpha1.UDFWorkerPolicyGeneration(cn.Spec.UDFWorker) != generation ||
+		v1alpha1.UDFWorkerPolicyGeneration(desired.Spec.UDFWorker) != generation ||
+		cn.Status.UDFWorker.Generation != generation {
+		return false
+	}
+	for _, typ := range []string{
+		v1alpha1.UDFWorkerConditionProvisioned,
+		v1alpha1.UDFWorkerConditionDependencyReady,
+		v1alpha1.UDFWorkerConditionCapacityReady,
+		v1alpha1.UDFWorkerConditionClientConfigReady,
+		v1alpha1.UDFWorkerConditionCapabilityReady,
+		v1alpha1.UDFWorkerConditionRouteReady,
+		v1alpha1.UDFWorkerConditionDegraded,
+	} {
+		condition := findUDFWorkerCondition(cn.Status.UDFWorker.Conditions, typ)
+		if condition == nil || condition.ObservedGeneration != cn.Generation || condition.Status == metav1.ConditionUnknown {
+			return false
+		}
+	}
+	return true
+}
+
 func retainUDFWorkerClusterConditions(conditions []metav1.Condition, enabled bool) []metav1.Condition {
 	allowed := map[string]struct{}{
 		v1alpha1.UDFWorkerConditionEnabled:     {},
@@ -139,7 +159,7 @@ func retainUDFWorkerClusterConditions(conditions []metav1.Condition, enabled boo
 	return kept
 }
 
-func allCNSetUDFWorkerCondition(sets map[string]*v1alpha1.CNSet, desired map[string]bool, typ string) (bool, string, string) {
+func allCNSetUDFWorkerCondition(sets map[string]*v1alpha1.CNSet, desired map[string]*v1alpha1.CNSet, typ string) (bool, string, string) {
 	if len(desired) == 0 {
 		return false, "NoCNSet", "no generated CNSet is available for the enabled Python UDF policy"
 	}
@@ -159,10 +179,10 @@ func allCNSetUDFWorkerCondition(sets map[string]*v1alpha1.CNSet, desired map[str
 	return true, "AllCNSetConditionsReady", "all generated CNSets report this condition ready"
 }
 
-func sortedDesiredNames(desired map[string]bool) []string {
+func sortedDesiredNames(desired map[string]*v1alpha1.CNSet) []string {
 	names := make([]string, 0, len(desired))
 	for name, wanted := range desired {
-		if wanted {
+		if wanted != nil {
 			names = append(names, name)
 		}
 	}

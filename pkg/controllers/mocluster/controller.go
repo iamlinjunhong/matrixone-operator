@@ -171,6 +171,7 @@ func (r *MatrixOneClusterActor) Up(ctx *recon.Context[*v1alpha1.MatrixOneCluster
 	}
 
 	desiredCNSets := map[string]bool{}
+	desiredUDFCNSets := map[string]*v1alpha1.CNSet{}
 	for _, g := range cnGroups {
 		cnSetName := fmt.Sprintf("%s-%s", mo.Name, g.Name)
 		desiredCNSets[cnSetName] = true
@@ -224,6 +225,7 @@ func (r *MatrixOneClusterActor) Up(ctx *recon.Context[*v1alpha1.MatrixOneCluster
 		if err != nil {
 			return nil, errors.Wrap(err, 0)
 		}
+		desiredUDFCNSets[cnSetName] = tpl.DeepCopy()
 	}
 
 	// GC no longer needed CNSets
@@ -263,7 +265,7 @@ func (r *MatrixOneClusterActor) Up(ctx *recon.Context[*v1alpha1.MatrixOneCluster
 		})
 	}
 	mo.Status.CNGroupStatus = groupStatus
-	syncUDFWorkerClusterStatus(mo, cnGroups, csList.Items, desiredCNSets)
+	syncUDFWorkerClusterStatus(mo, cnGroups, csList.Items, desiredUDFCNSets)
 
 	if mo.Spec.WebUI != nil {
 		webui := &v1alpha1.WebUI{

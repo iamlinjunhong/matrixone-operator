@@ -45,8 +45,8 @@ immutable image digest, and CPU/memory limits. The image supplies Python,
 PyArrow, the matching timezone data, worker code and `/usr/bin/tini`.
 The rendered worker runs with UID/GID 1000. Digest syntax validation is not
 image-content authentication; image provenance remains the deployer's responsibility.
-Unsupported topology/launcher combinations and the enabled legacy demo sidecar
-are rejected. Image digests identify artifacts; compatibility is determined by
+Unsupported topology/launcher combinations and every explicitly supplied legacy
+demo sidecar field (including disabled or empty) are rejected. Image digests identify artifacts; compatibility is determined by
 the CN/worker contract, not by equal software version strings.
 
 The Operator owns the worker command, loopback bind, security context and status
@@ -81,7 +81,11 @@ CN store controller -> that CN's query service -> Gateway capability handshake
 
 The status wire bridge validates size, fields and stable errors. Observations are
 bound to Pod UID, CN identity, rendered policy generation and worker lease. An
-old Pod must not be stamped with desired-generation readiness. Missing, stale,
+old Pod must not be stamped with desired-generation readiness. Cluster aggregation
+also fences each child against the UID and metadata generation returned by its
+reconciliation write, the current policy hash and current condition observations.
+Missing/stale children contribute no ready workers and make the aggregate
+incomplete/degraded; the cluster status generation denotes the desired policy. Missing, stale,
 invalid or incompatible observations fail Python readiness; they are not cached
 as success for a replacement Pod. Controller query/observation errors stay
 distinct from valid CN-reported runtime failure classes.
@@ -95,12 +99,16 @@ Capability readiness is not added to Pod readiness, and the worker receives no
 capability readiness/liveness probe. A stalled worker can require whole-Pod
 replacement. Actual worker CrashLoop, OOM and eviction can still remove the CN
 Pod from SQL service endpoints. This is the accepted same-Pod availability cost.
-Worker/client changes roll the CN Pod; this is not an independent worker rollout.
+Worker/client changes enter the CloneSet-managed CN Pod rollout, which may use
+in-place container updates. This does not promise a new Pod UID or CN process
+for every worker-only image change; cross-claim reclaim below does require both.
 
 Python-enabled CN Pods cannot transfer warm CN/Gateway/worker state across claim
 owners. Normal reclaim, migration, overlapping claim finalization and legacy
 reclaim shortcuts must delete the old Pod instead of returning it Idle or merely
-changing owner labels. Markers are controller-owned; policy/container evidence
+changing owner labels. Pool revision retirement is controller-owned CNSet
+metadata projected onto Pods after overlays, so admission cannot reject normal
+retirement as user-supplied lifecycle state. Markers are controller-owned; policy/container evidence
 prevents marker removal from authorizing reuse. A new owner receives a fresh
 Pod UID. Failed/ambiguous ownership evidence fails closed.
 
@@ -122,8 +130,9 @@ CNSet UID is converted only after a platform ingress baseline covers stable,
 rendered and existing Pod selectors and the required numeric port/protocol tuples.
 It becomes a zero-grant anchor retained until all CN Pods, including terminating
 and CN-only Pods, disappear. A platform policy disappearing later must not make
-the last isolation policy disappear. Unowned collisions and missing coverage
-block migration; the controller never invents source authorization.
+the last isolation policy disappear. Unowned same-name objects are preserved and not migrated. Missing coverage for
+an owned legacy object blocks migration; the controller never invents source
+authorization.
 
 See [networking](python-udf-networking.md) for the exact migration contract and
 platform peer responsibilities, including CN/TN SQL TCP/6001 and Gossip UDP/6005.
